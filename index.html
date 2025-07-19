@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pathfinding Visualizer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="main">
+    <canvas id="gridCanvas" width="400" height="400"></canvas>
+    <div class="controls">
+      <select id="algoSelect">
+        <option value="astar">A*</option>
+        <option value="astar_dynamic">A*-Dynamic</option>
+        <option value="dijkstra">Dijkstra</option>
+        <option value="greedy">Greedy</option>
+        <option value="ml">ML</option>
+        <option value="ml_dynamic">ML-Dynamic</option>
+      </select>
+      <button id="startBtn">Start</button>
+      <button id="clearBtn">Clear</button>
+      <button id="clearDynamicBtn">Clear Dynamic Grid</button>
+    </div>
+    <div class="controls">
+      <input id="setupName" placeholder="Setup name">
+      <button id="saveBtn">Save Setup</button>
+      <select id="setupSelect"></select>
+      <button id="loadBtn">Load Setup</button>
+    </div>
+    <div id="results">
+      <button id="exportBtn">Export to Excel</button>
+      <table>
+        <thead><tr><th>#</th><th>Visited</th><th>Dist</th></tr></thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
