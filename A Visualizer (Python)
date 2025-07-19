@@ -1,0 +1,229 @@
+import pygame
+import math
+import heapq
+import random
+import sys
+
+class Cell:
+    def __init__(self, row, col):
+        self.row = row
+        self.col = col
+        self.f = float("inf")
+        self.g = float("inf")
+        self.h = 0
+        self.parent = 0
+        self.is_wall = False
+        self.color = (255,255,255) 
+        self.weight = 1.0 #default movement cost
+
+    def __lt__(self, other):
+        return self.f < other.f
+
+    def get_pos(self):
+        return self.row, self.col
+
+WIDTH = 600
+ROWS = 30
+WIN = pygame.display.set_mode((WIDTH, WIDTH))
+pygame.display.set_caption("A* Pathfinding Visualizer")
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GREEN = (0, 255, 0)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)
+PURPLE = (128, 0, 128)
+GREY = (128, 128, 128)
+
+def make_grid(rows):
+    grid = []
+    for i in range(rows):
+        row_cells = []
+
+        for j in range(rows):
+            row_cells.append(Cell(i,j))
+        grid.append(row_cells)
+    return grid
+
+def draw_grid(win, rows, width):
+    gap = width // rows
+    for i in range(rows):
+        pygame.draw.line(win, GREY, (0, i * gap), (width, i * gap))
+        pygame.draw.line(win, GREY, (i * gap, 0), (i * gap, width))
+
+def draw(win, grid, rows, width):
+    win.fill(WHITE)
+    gap = width // rows
+    for row in grid:
+        for cell in row:
+            pygame.draw.rect(win, cell.color, (cell.col * gap, cell.row * gap, gap, gap))
+    draw_grid(win, rows, width)
+    pygame.display.update()
+
+def trace_path(came_from, current, draw):
+    length = 0
+    while current in came_from:
+        prev = current
+        current = came_from[current]
+        dx = abs(current.row - prev.row)
+        dy = abs(current.col - prev.col)
+        if dx == 1 and dy ==1:
+            length += math.sqrt(2)
+        else:
+            length += 1
+        current.color = PURPLE #path drawn
+        draw()
+
+def get_neighbors(grid, cell):
+    neighbors = []
+    directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+    for dx, dy in directions:
+        r = cell.row + dx
+        c = cell.col + dy
+        if 0 <= r < ROWS and 0 <= c < ROWS:
+            neighbor = grid[r][c]
+            if neighbor.is_wall:
+                continue
+
+            if abs(dx) == 1 and abs(dy) == 1:
+                if grid[cell.row][cell.col + dy].is_wall or grid[cell.row + dx][cell.col].is_wall:
+                    continue   #making sure it doesnt cut through corners here
+            neighbors.append(neighbor)
+            
+    return neighbors
+
+
+def heruistic(a, b):
+    return ((a.row - b.row) **2 + (a.col - b.col) **2) ** 0.5 #h-value, just renamed
+
+def calculate_g_value(current, neighbor):
+    dx = abs(current.row - neighbor.row)
+    dy = abs(current.col - neighbor.col)
+    if dx == 1 and dy == 1:
+        dist = math.sqrt(2)
+    else:
+        dist = 1
+
+    return current.g + dist *neighbor.weight
+
+def a_search(draw, grid, start, end):
+    count = 0
+    open_set = []
+    heapq.heappush(open_set, (0, count, start))
+    came_from = {}
+
+    start.g = 0
+    start.f = heruistic(start, end)
+
+    open_set_hash = {start}
+
+    while len(open_set) > 0:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        current = heapq.heappop(open_set)[2]
+        open_set_hash.remove(current)
+
+        if current == end:
+            trace_path(came_from, end, draw)
+            end.color = RED #end
+            start.color = GREEN #start
+            return True
+
+        for neighbor in get_neighbors(grid, current):
+            temp_g = calculate_g_value(current, neighbor)
+
+            if temp_g < neighbor.g:
+                came_from[neighbor] = current
+                neighbor.g = temp_g
+                neighbor.h = heruistic(neighbor, end)
+                neighbor.f = neighbor.g + neighbor.h
+
+                if neighbor not in open_set_hash:
+                    count += 1
+                    heapq.heappush(open_set, (neighbor.f, count, neighbor))
+                    open_set_hash.add(neighbor)
+                    neighbor.color = YELLOW 
+                    #Frontier nodes that are currently in the open set with neighbors that need to be explored. 
+                    #Probally need to fix this as it still shows up after finding correct path. Should only show up in the ticks leading up to finding the correct path
+
+        draw()
+
+        if current != start:
+            current.color = BLUE #squares examined while attempting to find shortest path
+
+    return False
+
+
+
+def main(win, width):
+    global ROWS
+    ROWS = 30
+    grid = make_grid(ROWS)
+
+    start = None
+    end = None
+
+    run = True
+    started = False
+
+    while run:
+        draw(win, grid, ROWS, width)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+
+            if started:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                    start = None
+                    end = None
+                    grid = make_grid(ROWS)
+                    started = False
+                continue
+
+            if pygame.mouse.get_pressed()[0]:  # left click to place start and end tiles and walls
+                pos = pygame.mouse.get_pos()
+                row = pos[1] // (width // ROWS)
+                col = pos[0] // (width // ROWS)
+                cell = grid[row][col]
+                if not start and cell != end:
+                    start = cell
+                    start.color = GREEN
+                elif not end and cell != start:
+                    end = cell
+                    end.color = RED
+                elif cell != end and cell != start:
+                    cell.is_wall = True
+                    cell.color = BLACK
+
+            elif pygame.mouse.get_pressed()[2]:  # right click to reset
+                pos = pygame.mouse.get_pos()
+                row = pos[1] // (width // ROWS)
+                col = pos[0] // (width // ROWS)
+                cell = grid[row][col]
+                cell.is_wall = False
+                if cell == start:
+                    start = None 
+                if cell == end:
+                    end = None
+                cell.color = WHITE
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and start and end:
+                    started = True
+                    a_search(lambda: draw(win, grid, ROWS, width), grid, start, end)
+
+                if event.key == pygame.K_c:
+                    start = None
+                    end = None
+                    grid = make_grid(ROWS)
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    pygame.init()
+    main(WIN, WIDTH)
