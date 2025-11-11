@@ -22,20 +22,93 @@
       <button id="clearDynamicBtn">Clear Dynamic Grid</button>
     </div>
     <div class="controls">
+      <select id="gridTypeSelect">
+        <option value="random">Random</option>
+        <option value="maze">Maze</option>
+        <option value="clustered">Clustered Obstacles</option>
+        <option value="mixed">Mixed</option>
+      </select>
+      <button id="generateBtn">Generate Layout</button>
+    </div>
+    <div class="batch-test-panel">
+      <div class="batch-test-section">
+        <h3>Batch Test Configuration</h3>
+        <div class="config-group">
+          <label>Algorithm Pair:</label>
+          <select id="algorithmPairSelect"></select>
+        </div>
+        <div class="config-group">
+          <button id="exportResultsBtn" class="export-btn">Export Results to Excel</button>
+        </div>
+        <div class="config-group">
+          <label>Layout Families:</label>
+          <div id="layoutFamilies" class="checkbox-group"></div>
+        </div>
+        <div class="config-group">
+          <label>Density Bands:</label>
+          <div id="densityBands" class="checkbox-group"></div>
+        </div>
+        <div class="config-group">
+          <label>Seeds per Family/Density:</label>
+          <select id="seedPreset">
+            <option value="QUICK">Quick (5 seeds)</option>
+            <option value="RECOMMENDED" selected>Recommended (20 seeds)</option>
+            <option value="ROBUST">Robust (50 seeds)</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label>Start/Goal Pairs per Seed:</label>
+          <input type="number" id="pairsPerSeed" min="1" max="10" value="3">
+        </div>
+        <div class="config-group">
+          <label>Timeout per Run (ms):</label>
+          <input type="number" id="timeoutMs" min="1000" max="60000" value="10000" step="1000">
+        </div>
+        <div class="config-group">
+          <label>
+            <input type="checkbox" id="saveInputs" checked>
+            Save inputs (grids and coordinates)
+          </label>
+        </div>
+        <div class="batch-test-actions">
+          <button id="batchTestBtn">Run Tests</button>
+        </div>
+      </div>
+      <div id="batchTestProgress" class="progress-section" style="display: none;">
+        <div class="progress-bar">
+          <div class="progress-fill"></div>
+        </div>
+        <div class="progress-text">0%</div>
+      </div>
+    </div>
+    <div class="controls">
       <input id="setupName" placeholder="Setup name">
       <button id="saveBtn">Save Setup</button>
       <select id="setupSelect"></select>
       <button id="loadBtn">Load Setup</button>
     </div>
     <div id="results">
-      <button id="exportBtn">Export to Excel</button>
       <table>
-        <thead><tr><th>#</th><th>Visited</th><th>Dist</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Test Case</th>
+            <th>Layout Type</th>
+            <th>Wall Density</th>
+            <th>Algorithm</th>
+            <th>Time (ms)</th>
+            <th>Nodes Visited</th>
+            <th>Path Length</th>
+            <th>Success</th>
+          </tr>
+        </thead>
         <tbody id="resultsBody"></tbody>
       </table>
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-  <script type="module" src="./main.js"></script>
+  <script type="module" src="./batch-test-config.js"></script>
+  <script type="module" src="./batch-test-runner.js"></script>
+  <script type="module" src="./main_optimized.js"></script>
+  <script src="./ml-performance-test.js"></script>
 </body>
 </html>

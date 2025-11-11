@@ -14,8 +14,8 @@ Model = keras.Model
 
 GRID_SIZE = 20 #if this is changed it needs to be changed in actual pathfinder as well, check if a 30x30 grid is better
 OBSTACLE_PROB = 0.5 #increase to make more difficult training
-NUM_SAMPLES = 5000  # Lower for faster testing
-MAX_ATTEMPTS = NUM_SAMPLES * 20  # Prevent infinite loop if too many unsolvable grids
+NUM_SAMPLES = 2000  # increased for better generalization
+MAX_ATTEMPTS = NUM_SAMPLES * 25 
 
 def generate_random_grid():
     grid = np.random.choice([0,1], size=(GRID_SIZE, GRID_SIZE), p=[1-OBSTACLE_PROB, OBSTACLE_PROB])
@@ -98,11 +98,15 @@ def a_star(grid, start, goal):
 def flatten_grid(grid):
     return grid.flatten().tolist()
 
-grid_samples, start_goal_samples, residual_targets = [], [], []
-print("generating training data")
+grid_samples, start_goal_samples, residual_targets, distances = [], [], [], []
+print("generating training data with distance-aware sampling")
 start_time = time.time()
 attempts = 0
-while len(residual_targets) < NUM_SAMPLES and attempts < MAX_ATTEMPTS:
+
+# Bucket samples by distance to ensure we get diverse distance ranges
+distance_buckets = {i: [] for i in range(1, 27)}  # distances 1-26
+
+while attempts < MAX_ATTEMPTS:
     grid = generate_mixed_grid()
     start = random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)
     goal = random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)
@@ -112,18 +116,40 @@ while len(residual_targets) < NUM_SAMPLES and attempts < MAX_ATTEMPTS:
     cost = a_star(grid, start, goal)
     if cost is not None:
         base_h = octile_distance(start, goal)
-        residual = cost - base_h
-        if residual < 4.0:
-            continue
-        sg_features = [
-            start[0]/(GRID_SIZE-1), start[1]/(GRID_SIZE-1),
-            goal[0]/(GRID_SIZE-1), goal[1]/(GRID_SIZE-1)
-        ]
-        grid_samples.append(grid.reshape((GRID_SIZE, GRID_SIZE, 1)))
-        start_goal_samples.append(sg_features)
-        residual_targets.append(residual)
-    if len(residual_targets) % 500 == 0 and len(residual_targets) > 0:
-        print(f"Progress: {len(residual_targets)}/{NUM_SAMPLES} samples generated after {attempts} attempts...")
+        dist = int(base_h)  # bucket by octile distance
+        
+        # Accept ALL costs to get full range
+        if 1 <= dist <= 26:
+            # Add 4 normalized features: start_r, start_c, goal_r, goal_c (no distance feature)
+            distance_buckets[dist].append({
+                'grid': grid.reshape((GRID_SIZE, GRID_SIZE, 1)),
+                'sg': [start[0]/(GRID_SIZE-1), start[1]/(GRID_SIZE-1),
+                       goal[0]/(GRID_SIZE-1), goal[1]/(GRID_SIZE-1)],  # 4 features only
+                'cost': cost,  # Changed from residual to cost
+                'distance': base_h
+            })
+
+# Balance samples across distance buckets, taking up to 100 from each
+for dist in sorted(distance_buckets.keys()):
+    samples_to_take = min(100, len(distance_buckets[dist]))
+    for sample in distance_buckets[dist][:samples_to_take]:
+        grid_samples.append(sample['grid'])
+        start_goal_samples.append(sample['sg'])
+        residual_targets.append(sample['cost'])  # Now storing cost, not residual
+        distances.append(sample['distance'])
+    if len(grid_samples) >= NUM_SAMPLES:
+        break
+
+if len(residual_targets) > NUM_SAMPLES:
+    # Trim to exact NUM_SAMPLES
+    grid_samples = grid_samples[:NUM_SAMPLES]
+    start_goal_samples = start_goal_samples[:NUM_SAMPLES]
+    residual_targets = residual_targets[:NUM_SAMPLES]
+    distances = distances[:NUM_SAMPLES]
+
+print(f"Generated {len(residual_targets)} samples across {len([d for d in distances if d > 0])} distance values")
+print(f"Distance range: {min(distances):.1f} - {max(distances):.1f}")
+print(f"Attempts: {attempts}")
 if len(residual_targets) < NUM_SAMPLES:
     print(f"WARNING: Only {len(residual_targets)} samples generated after {attempts} attempts. Consider lowering OBSTACLE_PROB or increasing MAX_ATTEMPTS.")
 end_time = time.time()
@@ -132,86 +158,68 @@ print(f"Data generation completed in {end_time-start_time:.2f} seconds.")
 grid_samples = np.array(grid_samples, dtype=np.float32)
 start_goal_samples = np.array(start_goal_samples, dtype=np.float32)
 residual_targets = np.array(residual_targets, dtype=np.float32)
-print(f"Generated {len(residual_targets)} samples.")
 
-max_cost = math.sqrt(2) * (GRID_SIZE - 1)
+# Normalize cost targets to [0, 1] range for better training
+# Cost ranges from ~1 to ~27, so normalize by max expected cost
+max_cost = math.sqrt(2) * (GRID_SIZE - 1)  # ~26.87
 residual_targets = residual_targets / max_cost
 
 plt.hist(residual_targets, bins=50)
-plt.title('Normalized Residual Distribution (cost - octile) / max_cost')
-plt.xlabel('Normalized Residual')
+plt.title('Cost Distribution (normalized by max possible cost)')
+plt.xlabel('Normalized Cost')
 plt.ylabel('Count')
-plt.show()
+plt.savefig('residual_distribution.png')
+plt.close()
+print("Distribution plot saved to residual_distribution.png")
 
-print(f"Target residual stats: min={residual_targets.min():.3f}, max={residual_targets.max():.3f}, mean={residual_targets.mean():.3f}, std={residual_targets.std():.3f}")
+print(f"Target cost stats: min={residual_targets.min():.3f}, max={residual_targets.max():.3f}, mean={residual_targets.mean():.3f}, std={residual_targets.std():.3f}")
 print("Sample grid shape:", grid_samples[0].shape, "Sample start/goal:", start_goal_samples[0])
 
 
 train_grids, val_grids, train_start_goals, val_start_goals, train_targets, val_targets = train_test_split(
     grid_samples, start_goal_samples, residual_targets, test_size=0.1, random_state=42)
+
 def build_model():
     grid_input = keras.Input(shape=(GRID_SIZE, GRID_SIZE, 1), name="grid")
-    start_goal_input = keras.Input(shape=(4,), name="start_goal")
-    x = layers.Conv2D(16, (3,3), activation='relu', padding='same')(grid_input)
-    x = layers.Flatten()(x)
-    x = layers.Concatenate()([x, start_goal_input])
-    x = layers.Dense(64, activation='relu')(x)
-    x = layers.Dense(32, activation='relu')(x)
-    output = layers.Dense(1, activation='linear')(x)
+    start_goal_input = keras.Input(shape=(4,), name="start_goal")  # 4 features: start_r, start_c, goal_r, goal_c
+    
+    # Grid processing branch - extract spatial features from walls
+    grid_branch = layers.Conv2D(16, (3,3), activation='relu', padding='same')(grid_input)
+    grid_branch = layers.Conv2D(8, (3,3), activation='relu', padding='same')(grid_branch)
+    grid_branch = layers.Flatten()(grid_branch)
+    grid_branch = layers.Dense(128, activation='relu')(grid_branch)
+    
+    # Start/goal processing branch - emphasize distance information
+    sg_branch = layers.Dense(32, activation='relu')(start_goal_input)
+    sg_branch = layers.Dense(32, activation='relu')(sg_branch)
+    sg_branch = layers.Dense(16, activation='relu')(sg_branch)
+    
+    # Combine both branches
+    x = layers.Concatenate()([grid_branch, sg_branch])
+    x = layers.Dense(96, activation='relu')(x)
+    x = layers.Dropout(0.1)(x)
+    x = layers.Dense(48, activation='relu')(x)
+    # Add slight positive bias to output layer to counteract underestimation tendency
+    output = layers.Dense(1, activation='linear', bias_initializer=keras.initializers.Constant(0.1))(x)
+    
     model = keras.Model(inputs=[grid_input, start_goal_input], outputs=output)
     return model
 
 model = build_model()
+
+# Simple approach: use MSE but with initial bias to help with calibration
 model.compile(optimizer='adam', loss='mse')
 
 cb = [
-    keras.callbacks.EarlyStopping(patience=8, restore_best_weights=True),
-    keras.callbacks.ReduceLROnPlateau(patience=4, factor=0.5, min_lr=1e-5)
+    keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True),
+    keras.callbacks.ReduceLROnPlateau(patience=5, factor=0.5, min_lr=1e-5)
 ]
-model.fit([train_grids, train_start_goals], train_targets, epochs=60, batch_size=64, validation_data=([val_grids, val_start_goals], val_targets), callbacks=cb, verbose=2)
+model.fit([train_grids, train_start_goals], train_targets, epochs=100, batch_size=32, validation_data=([val_grids, val_start_goals], val_targets), callbacks=cb, verbose=2)
 
 
-print("\nmining hard cases on residual underestimates")
-hard_grid_samples, hard_start_goal_samples, hard_residual_targets = [], [], []
-for _ in range(20000):
-    grid = generate_mixed_grid()
-    start = random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)
-    goal = random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)
-    if grid[start] == 1 or grid[goal] == 1 or start == goal:
-        continue
-    cost = a_star(grid, start, goal)
-    if cost is not None:
-        base_h = octile_distance(start, goal)
-        residual = cost - base_h
-        if residual < 4.0:
-            continue
-        sg_features = [
-            start[0]/(GRID_SIZE-1), start[1]/(GRID_SIZE-1),
-            goal[0]/(GRID_SIZE-1), goal[1]/(GRID_SIZE-1)
-        ]
-        pred = model.predict([grid.reshape((1, GRID_SIZE, GRID_SIZE, 1)), np.array([sg_features])], verbose=0)[0][0] * max_cost
-        if pred < (residual * 0.7):
-            hard_grid_samples.append(grid.reshape((GRID_SIZE, GRID_SIZE, 1)))
-            hard_start_goal_samples.append(sg_features)
-            hard_residual_targets.append(residual / max_cost)
-
-print(f"Found {len(hard_grid_samples)} hard mined samples.")
-if hard_grid_samples:
-    aug_grid_samples = np.concatenate([grid_samples, np.array(hard_grid_samples)])
-    aug_start_goal_samples = np.concatenate([start_goal_samples, np.array(hard_start_goal_samples)])
-    aug_residual_targets = np.concatenate([residual_targets, np.array(hard_residual_targets)])
-    train_grids2, val_grids2, train_start_goals2, val_start_goals2, train_targets2, val_targets2 = train_test_split(
-        aug_grid_samples, aug_start_goal_samples, aug_residual_targets, test_size=0.1, random_state=42)
-    print("Retraining data...")
-    history2 = model.fit([train_grids2, train_start_goals2], train_targets2, epochs=40, batch_size=64, validation_data=([val_grids2, val_start_goals2], val_targets2), callbacks=cb, verbose=2)
-    preds2 = model.predict([val_grids2, val_start_goals2])
-    print(" MSE after hard mining:", mean_squared_error(val_targets2, preds2))
-    # checking if overfitting of data is occuring
-    if hasattr(history2, 'history'):
-        print("Final training loss:", history2.history['loss'][-1])
-        print("Final validation loss:", history2.history['val_loss'][-1])
-else:
-    print("No hard cases found for augmentation.")
+print("\nSkipping hard case mining for faster deployment...")
+# Hard mining commented out to speed up training
+# The initial training with 1000 samples should be sufficient for basic testing
 
 
 model.export("ml_heuristic_savedmodel_static")

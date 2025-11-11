@@ -115,7 +115,7 @@ def flatten_cost_grid(cost_grid):
 
 
 grid_samples, cost_samples, start_goal_samples, residual_targets = [], [], [], []
-print("Generating dynamic training data...")
+print("Generating data")
 while len(residual_targets) < NUM_SAMPLES:
     grid, cost_grid = generate_mixed_grid()
     start = random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)
@@ -162,16 +162,47 @@ train_grids, val_grids, train_costs, val_costs, train_start_goals, val_start_goa
     grid_samples, cost_samples, start_goal_samples, residual_targets, test_size=0.1, random_state=42)
 
 
+# OPTIMIZATION NOTES:
+# 1. Model Architecture Improvements needed:
+#    - Add residual connections to help with gradient flow
+#    - Use instance normalization instead of batch norm for faster inference
+#    - Consider adding attention mechanism to focus on relevant grid areas
+# 2. Training Improvements needed:
+#    - Add curriculum learning: start with simple paths, gradually increase complexity
+#    - Implement contrastive learning to better distinguish similar paths
+#    - Add more diverse grid patterns in training data
+# 3. Inference Optimization needed:
+#    - Implement model quantization for faster inference
+#    - Consider using TensorRT for GPU acceleration
+#    - Cache commonly accessed paths for repeated queries
+
 def build_model():
+
     grid_input = keras.Input(shape=(GRID_SIZE, GRID_SIZE, 1), name="grid")
     cost_input = keras.Input(shape=(GRID_SIZE, GRID_SIZE, 1), name="cost")
     start_goal_input = keras.Input(shape=(4,), name="start_goal")
-    x1 = layers.Conv2D(8, (3,3), activation='relu', padding='same')(grid_input)
-    x2 = layers.Conv2D(8, (3,3), activation='relu', padding='same')(cost_input)
-    x = layers.Concatenate()([layers.Flatten()(x1), layers.Flatten()(x2), start_goal_input])
+    
+
+    x1 = layers.Conv2D(16, (3,3), strides=2, activation='relu', padding='same')(grid_input)
+    x1 = layers.Conv2D(32, (3,3), strides=2, activation='relu', padding='same')(x1)
+    
+    x2 = layers.Conv2D(16, (3,3), strides=2, activation='relu', padding='same')(cost_input)
+    x2 = layers.Conv2D(32, (3,3), strides=2, activation='relu', padding='same')(x2)
+    
+
+    x1 = layers.GlobalAveragePooling2D()(x1)
+    x2 = layers.GlobalAveragePooling2D()(x2)
+    
+    x = layers.Concatenate()([x1, x2, start_goal_input])
+    
+
+    x = layers.Dense(128, activation='relu')(x)
     x = layers.Dense(64, activation='relu')(x)
-    x = layers.Dense(32, activation='relu')(x)
+    
+
+    x = layers.Dropout(0.2)(x)
     output = layers.Dense(1, activation='linear')(x)
+    
     model = keras.Model(inputs=[grid_input, cost_input, start_goal_input], outputs=output)
     return model
 

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple ML Model Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        button { padding: 10px 20px; margin: 5px; font-size: 14px; cursor: pointer; }
+        #output { border: 1px solid #ccc; padding: 10px; margin: 10px 0; background: #f9f9f9; min-height: 100px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>ML Model Test</h1>
+    <button onclick="testModel()">Load & Test Model</button>
+    <div id="output">Click button to test...</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script>
+        async function testModel() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<p>Testing...</p>';
+
+            try {
+                // Test 1: Load TensorFlow
+                output.innerHTML += '<p>1. Loading TensorFlow.js...</p>';
+                if (!window.tf) {
+                    output.innerHTML += '<p class="error">ERROR: TensorFlow.js not loaded</p>';
+                    return;
+                }
+                output.innerHTML += '<p class="success">✓ TensorFlow.js loaded</p>';
+
+                // Test 2: Load model
+                output.innerHTML += '<p>2. Loading model from web_model_static/...</p>';
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                if (!model) {
+                    output.innerHTML += '<p class="error">ERROR: Model failed to load</p>';
+                    return;
+                }
+                output.innerHTML += '<p class="success">✓ Model loaded successfully</p>';
+                if (model.inputNames) {
+                    output.innerHTML += `<p>   - Input names: ${model.inputNames.join(', ')}</p>`;
+                }
+                if (model.outputNames) {
+                    output.innerHTML += `<p>   - Output names: ${model.outputNames.join(', ')}</p>`;
+                }
+
+                // Test 3: Create inputs
+                output.innerHTML += '<p>3. Creating input tensors...</p>';
+                const grid = tf.zeros([1, 20, 20, 1]);
+                const sg = tf.randomUniform([1, 4]);  // 4 features: start_r, start_c, goal_r, goal_c
+                output.innerHTML += `<p class="success">✓ Created grid[1,20,20,1] and sg[1,4]</p>`;
+
+                // Test 4: Run inference
+                output.innerHTML += '<p>4. Running inference...</p>';
+                const result = model.execute({grid: grid, start_goal: sg});
+                const resultTensor = Array.isArray(result) ? result[0] : result;
+                const data = await resultTensor.data();
+                const value = data[0];
+                
+                output.innerHTML += `<p class="success">✓ Inference successful</p>`;
+                output.innerHTML += `<p>   - Output value: ${value.toFixed(6)}</p>`;
+                output.innerHTML += `<p>   - Is finite: ${isFinite(value) ? 'YES' : 'NO'}</p>`;
+                output.innerHTML += `<p>   - In range [0,1]: ${value >= 0 && value <= 1 ? 'YES' : 'NO'}</p>`;
+
+                // Cleanup
+                grid.dispose();
+                sg.dispose();
+                if (Array.isArray(result)) {
+                    result.forEach(t => t.dispose());
+                } else {
+                    result.dispose();
+                }
+                model.dispose();
+
+                output.innerHTML += '<p class="success" style="font-size: 16px; margin-top: 20px;">ALL TESTS PASSED!</p>';
+
+            } catch (error) {
+                output.innerHTML += `<p class="error">ERROR: ${error.message}</p>`;
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>

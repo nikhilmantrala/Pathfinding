@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Heuristic Regression Test</title>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #f0f0f0; }
+        #container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #eee; }
+        #output { border: 1px solid #ccc; padding: 10px; margin: 10px 0; background: #fafafa; max-height: 400px; overflow-y: auto; }
+        .good { color: green; }
+        .bad { color: red; }
+        .info { color: blue; }
+        h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>ML Heuristic Regression Diagnostic</h1>
+        <div id="instructions">
+            <p>This page tests whether the ML heuristic model is loading and making valid predictions.</p>
+            <p>Open the browser console (F12) and run the following commands:</p>
+            <ul>
+                <li><code>window.toggleMlHeuristicDebug(true)</code> - Enable detailed logging</li>
+                <li><code>window.getMLDiagnostics()</code> - Show diagnosis</li>
+                <li><code>window.resetMLDiagnostics()</code> - Reset counters</li>
+            </ul>
+        </div>
+        <div>
+            <button onclick="testModelLoad()">Test Model Load</button>
+            <button onclick="testPrediction()">Test Prediction</button>
+            <button onclick="runDiagnostics()">Run Diagnostics</button>
+            <button onclick="enableDebug()">Enable Debug Mode</button>
+        </div>
+        <div id="output"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.22.0/dist/tf-backend-webgl.min.js"></script>
+    <script>
+        const output = document.getElementById('output');
+
+        function log(msg, type = 'info') {
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = msg;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        window.testModelLoad = async () => {
+            output.innerHTML = '';
+            log('Testing model load...', 'info');
+            try {
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                if (model) {
+                    log('✓ Model loaded successfully!', 'good');
+                    if (model.inputNames) {
+                        log(`Input names: ${model.inputNames.join(', ')}`, 'info');
+                    }
+                    if (model.outputNames) {
+                        log(`Output names: ${model.outputNames.join(', ')}`, 'info');
+                    }
+                    model.dispose();
+                } else {
+                    log('✗ Model is null!', 'bad');
+                }
+            } catch (e) {
+                log(`✗ Failed to load model: ${e.message}`, 'bad');
+            }
+        };
+
+        window.testPrediction = async () => {
+            output.innerHTML = '';
+            log('Testing model prediction...', 'info');
+            try {
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                if (!model) {
+                    log('✗ Failed to load model', 'bad');
+                    return;
+                }
+
+                // Create dummy inputs
+                const grid = tf.zeros([1, 20, 20, 1]);
+                const sg = tf.randomUniform([1, 5]);
+                
+                log('Running inference...', 'info');
+                const result = model.execute({grid: grid, start_goal: sg});
+                const resultTensor = Array.isArray(result) ? result[0] : result;
+                const data = await resultTensor.data();
+                const value = data[0];
+
+                log(`Prediction value: ${value.toFixed(6)}`, 'good');
+                log(`Is finite: ${isFinite(value) ? 'YES' : 'NO'}`, isFinite(value) ? 'good' : 'bad');
+                log(`Range [0,1]: ${value >= 0 && value <= 1 ? 'VALID' : 'OUT OF RANGE'}`, value >= 0 && value <= 1 ? 'good' : 'bad');
+
+                grid.dispose();
+                sg.dispose();
+                if (Array.isArray(result)) {
+                    result.forEach(t => t.dispose());
+                } else {
+                    result.dispose();
+                }
+                model.dispose();
+            } catch (e) {
+                log(`✗ Test failed: ${e.message}`, 'bad');
+            }
+        };
+
+        window.runDiagnostics = () => {
+            output.innerHTML = '';
+            log('Running diagnostics...', 'info');
+            
+            if (!window.getMLDiagnostics) {
+                log('✗ Diagnostics not available - ml-heuristic module may not be loaded', 'bad');
+                log('Try opening index.html first to load the pathfinding app', 'info');
+                return;
+            }
+            
+            const diag = window.getMLDiagnostics();
+            log(`Total ML calls: ${diag.totalCalls}`, 'info');
+            log(`Model loads: ${diag.modelLoads}`, 'info');
+            log(`Prediction failures: ${diag.predictionFailures}`, diag.predictionFailures > 0 ? 'bad' : 'good');
+            log(`Valid residuals: ${diag.validResiduals}`, 'good');
+            log(`Failure rate: ${diag.failureRate}`, diag.failureRate === '0.0%' || diag.failureRate === 'N/A' ? 'good' : 'bad');
+        };
+
+        window.enableDebug = () => {
+            if (!window.toggleMlHeuristicDebug) {
+                log('✗ Debug toggle not available - ml-heuristic module not loaded', 'bad');
+                return;
+            }
+            window.toggleMlHeuristicDebug(true);
+            log('✓ Debug mode enabled - check browser console (F12) for detailed logs', 'good');
+        };
+
+        // Auto-run diagnostics on page load
+        window.addEventListener('load', () => {
+            log('✓ Page loaded. TensorFlow.js ready.', 'good');
+            log('Click buttons above or use console commands', 'info');
+            log('', 'info');
+            log('To load ml-heuristic diagnostics:', 'info');
+            log('1. Open index.html in another tab', 'info');
+            log('2. Return here and click "Run Diagnostics"', 'info');
+        });
+    </script>
+</body>
+</html>

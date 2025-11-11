@@ -7,9 +7,26 @@ export class Cell {
         this.g = Infinity;
         this.h = 0;
         this.isWall = false;
+        this.isStart = false;
+        this.isEnd = false;
+        this.isPath = false;
+        this.isVisited = false;
         this.weight = 1.0;
-        this.color = 'white';
         this.parent = null;
+    }
+
+    get color() {
+        if (this.isStart) return '#00ff00';  // Green for start
+        if (this.isEnd) return '#ff0000';    // Red for end
+        if (this.isWall) return '#000000';   // Black for walls
+        if (this.isPath) return '#0000ff';   // Blue for path
+        if (this.isVisited) return '#aaaaff'; // Light blue for visited
+        return '#ffffff';                     // White for empty cells
+    }
+
+    set color(value) {
+        // Color property is now computed based on cell state
+        // This setter is kept for compatibility but doesn't do anything
     }
 }
 
@@ -66,8 +83,8 @@ export class Grid {
 }
 
 export function cloneGrid(grid) {
-    //Deep clone(completely new instance) the grid for independent runs
-    //Need to make it so that grids can be run right next to each other with diff algorithms
+    //deep clone(completely new instance) the grid for independent runs
+    //need to make it so that grids can be run right next to each other with diff algorithms
     return grid.map(row => row.map(cell => {
         const c = new Cell(cell.row, cell.col);
         c.isWall = cell.isWall;

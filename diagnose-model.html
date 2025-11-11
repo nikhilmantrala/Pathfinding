@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ML Model Diagnostic</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        .section { margin: 20px 0; padding: 15px; background: #252526; border-left: 3px solid #007acc; }
+        .log { background: #1e1e1e; padding: 10px; margin: 5px 0; border-radius: 3px; max-height: 300px; overflow-y: auto; }
+        button { padding: 8px 15px; margin: 5px; background: #007acc; color: white; border: none; cursor: pointer; }
+        button:hover { background: #005a9e; }
+        .warning { color: #ce9178; }
+        .error { color: #f48771; }
+        .success { color: #6a9955; }
+        .input { padding: 5px; margin: 3px; background: #3e3e42; border: 1px solid #555; color: #d4d4d4; }
+    </style>
+</head>
+<body>
+    <h1>ML Model Diagnostic Tool</h1>
+    
+    <div class="section">
+        <h2>Model Information</h2>
+        <button onclick="loadAndInspectModel()">Load & Inspect Static Model</button>
+        <div id="modelInfo" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test Grid Variations</h2>
+        <p>Test with different grid configurations to see if model output varies:</p>
+        <button onclick="testGridVariations()">Run Grid Variation Test (50 grids)</button>
+        <div id="gridTest" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test Start/Goal Variations</h2>
+        <p>Test with same grid but different start/goal to isolate if model uses start_goal input:</p>
+        <button onclick="testStartGoalVariations()">Run Start/Goal Test (50 variations)</button>
+        <div id="sgTest" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>Tensor Shape Test</h2>
+        <p>Verify that tensor shapes match model expectations:</p>
+        <button onclick="testTensorShapes()">Test Tensor Shapes</button>
+        <div id="tensorTest" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>Model Weights Analysis</h2>
+        <p>Check if model has actual weights or if it's essentially a constant function:</p>
+        <button onclick="analyzeWeights()">Analyze Model Weights</button>
+        <div id="weightsTest" class="log"></div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 20;
+        
+        const log = (target, msg, type='') => {
+            const el = document.getElementById(target);
+            const time = new Date().toLocaleTimeString();
+            const style = type ? `<span class="${type}">[${type.toUpperCase()}]</span> ` : '';
+            el.innerHTML += style + '[' + time + '] ' + msg + '\n';
+            el.scrollTop = el.scrollHeight;
+        };
+
+        // Compute octile distance between two grid positions
+        const octileDistance = (r1, c1, r2, c2) => {
+            const dx = Math.abs(r1 - r2);
+            const dy = Math.abs(c1 - c2);
+            const D = 1;
+            const D2 = Math.sqrt(2);
+            return D * (dx + dy) + (D2 - 2 * D) * Math.min(dx, dy);
+        };
+        
+        // Normalize distance to [0, 1] range based on max grid distance
+        const normalizeDistance = (dist) => {
+            const maxDist = Math.sqrt(2) * (GRID_SIZE - 1);
+            return dist / maxDist;
+        };
+
+        async function loadAndInspectModel() {
+            log('modelInfo', 'Loading model...', 'info');
+            try {
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                log('modelInfo', `✓ Model loaded successfully`, 'success');
+                log('modelInfo', `  Input names: ${model.inputNames ? model.inputNames.join(', ') : 'N/A'}`);
+                log('modelInfo', `  Inputs: ${JSON.stringify(model.inputs?.map(i => ({ shape: i.shape, dtype: i.dtype })) || 'N/A')}`);
+                log('modelInfo', `  Output names: ${JSON.stringify(model.outputNames || 'N/A')}`);
+                log('modelInfo', `  Has weights: ${model.weights ? model.weights.length + ' tensors' : 'N/A'}`);
+                
+                if (model.weights && model.weights.length > 0) {
+                    log('modelInfo', `  First 3 weight shapes:`);
+                    for (let i = 0; i < Math.min(3, model.weights.length); i++) {
+                        const w = model.weights[i];
+                        const data = await w.data();
+                        const stats = { min: Math.min(...data), max: Math.max(...data), mean: data.reduce((a,b)=>a+b)/data.length };
+                        log('modelInfo', `    ${i}: shape=${JSON.stringify(w.shape)}, dtype=${w.dtype}, min=${stats.min.toFixed(4)}, max=${stats.max.toFixed(4)}, mean=${stats.mean.toFixed(4)}`);
+                    }
+                }
+            } catch (e) {
+                log('modelInfo', `✗ Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function testGridVariations() {
+            log('gridTest', 'Testing with 50 different random grids (same start/goal)...', 'info');
+            try {
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                const predictions = [];
+                
+                for (let test = 0; test < 50; test++) {
+                    // Create random grid
+                    const gridArr = new Float32Array(400);
+                    let wallCount = 0;
+                    for (let i = 0; i < 400; i++) {
+                        if (Math.random() < 0.2) { // 20% walls
+                            gridArr[i] = 1.0;
+                            wallCount++;
+                        } else {
+                            gridArr[i] = 0.0;
+                        }
+                    }
+                    
+                    // Same start/goal
+                    const startRow = 14, startCol = 3, goalRow = 7, goalCol = 13;
+                    const dist = octileDistance(startRow, startCol, goalRow, goalCol);
+                    const start = [startRow/19, startCol/19, goalRow/19, goalCol/19, normalizeDistance(dist)];
+                    
+                    const gridTensor = tf.tensor4d(gridArr, [1, 20, 20, 1], 'float32');
+                    const sgTensor = tf.tensor2d([start], [1, 5], 'float32');
+                    
+                    try {
+                        const out = model.execute({ grid: gridTensor, start_goal: sgTensor });
+                        const val = (await out.data())[0];
+                        predictions.push({ test, wallCount, pred: val.toFixed(6) });
+                        out.dispose();
+                    } catch (e) {
+                        log('gridTest', `  Try #${test+1} failed: ${e.message.split('\n')[0]}`, 'error');
+                    }
+                    
+                    gridTensor.dispose();
+                    sgTensor.dispose();
+                }
+                
+                log('gridTest', `Tested ${predictions.length} grids. Results:`, 'success');
+                log('gridTest', 'Test | Walls | Prediction');
+                predictions.forEach((p, i) => {
+                    log('gridTest', `${String(i+1).padStart(4)} | ${String(p.wallCount).padStart(5)} | ${p.pred}`);
+                });
+                
+                const vals = predictions.map(p => parseFloat(p.pred));
+                const minVal = Math.min(...vals);
+                const maxVal = Math.max(...vals);
+                const range = maxVal - minVal;
+                log('gridTest', `Min: ${minVal.toFixed(6)}, Max: ${maxVal.toFixed(6)}, Range: ${range.toFixed(6)}`, 
+                    range < 0.001 ? 'error' : 'success');
+            } catch (e) {
+                log('gridTest', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function testStartGoalVariations() {
+            log('sgTest', 'Testing with same grid but 50 different start/goal pairs...', 'info');
+            try {
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                
+                // Create one grid
+                const gridArr = new Float32Array(400);
+                for (let i = 0; i < 400; i++) {
+                    if (Math.random() < 0.2) {
+                        gridArr[i] = 1.0;
+                    } else {
+                        gridArr[i] = 0.0;
+                    }
+                }
+                
+                const predictions = [];
+                for (let test = 0; test < 50; test++) {
+                    const startRow = Math.floor(Math.random() * 20);
+                    const startCol = Math.floor(Math.random() * 20);
+                    const goalRow = Math.floor(Math.random() * 20);
+                    const goalCol = Math.floor(Math.random() * 20);
+                    
+                    const dist = octileDistance(startRow, startCol, goalRow, goalCol);
+                    const start = [startRow/19, startCol/19, goalRow/19, goalCol/19, normalizeDistance(dist)];
+                    
+                    const gridTensor = tf.tensor4d(gridArr, [1, 20, 20, 1], 'float32');
+                    const sgTensor = tf.tensor2d([start], [1, 5], 'float32');
+                    
+                    try {
+                        const out = model.execute({ grid: gridTensor, start_goal: sgTensor });
+                        const val = (await out.data())[0];
+                        predictions.push({ test, startRow, startCol, goalRow, goalCol, pred: val.toFixed(6) });
+                        out.dispose();
+                    } catch (e) {
+                        log('sgTest', `Try #${test+1} failed: ${e.message.split('\n')[0]}`, 'error');
+                    }
+                    
+                    gridTensor.dispose();
+                    sgTensor.dispose();
+                }
+                
+                log('sgTest', `Tested ${predictions.length} start/goal pairs. Results:`, 'success');
+                log('sgTest', 'Test | Start    | Goal     | Prediction');
+                predictions.forEach((p, i) => {
+                    log('sgTest', `${String(i+1).padStart(4)} | [${p.startRow},${p.startCol}] | [${p.goalRow},${p.goalCol}] | ${p.pred}`);
+                });
+                
+                const vals = predictions.map(p => parseFloat(p.pred));
+                const minVal = Math.min(...vals);
+                const maxVal = Math.max(...vals);
+                const range = maxVal - minVal;
+                log('sgTest', `Min: ${minVal.toFixed(6)}, Max: ${maxVal.toFixed(6)}, Range: ${range.toFixed(6)}`,
+                    range < 0.001 ? 'error' : 'success');
+            } catch (e) {
+                log('sgTest', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function testTensorShapes() {
+            log('tensorTest', 'Creating test tensors...', 'info');
+            try {
+                const gridArr = new Float32Array(400);
+                for (let i = 0; i < 400; i++) gridArr[i] = Math.random() < 0.2 ? 1.0 : 0.0;
+                
+                const gridTensor = tf.tensor4d(gridArr, [1, 20, 20, 1], 'float32');
+                const sgTensor = tf.tensor2d([[0.5, 0.5, 0.7, 0.7, 0.5]], [1, 5], 'float32');
+                
+                log('tensorTest', `Grid tensor shape: ${JSON.stringify(gridTensor.shape)}`, 'success');
+                log('tensorTest', `Start/Goal tensor shape: ${JSON.stringify(sgTensor.shape)}`, 'success');
+                
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                log('tensorTest', `Model input names: ${model.inputNames?.join(', ') || 'N/A'}`, 'info');
+                
+                try {
+                    const out = model.execute({ grid: gridTensor, start_goal: sgTensor });
+                    log('tensorTest', `Output shape: ${JSON.stringify(out.shape)}`, 'success');
+                    out.dispose();
+                } catch (e) {
+                    log('tensorTest', `execute() with {grid, start_goal} failed: ${e.message.split('\n')[0]}`, 'error');
+                }
+                
+                gridTensor.dispose();
+                sgTensor.dispose();
+            } catch (e) {
+                log('tensorTest', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function analyzeWeights() {
+            log('weightsTest', 'Analyzing model weights...', 'info');
+            try {
+                const model = await tf.loadGraphModel('./web_model_static/model.json');
+                
+                if (!model.weights || model.weights.length === 0) {
+                    log('weightsTest', 'No weights found in model!', 'error');
+                    return;
+                }
+                
+                log('weightsTest', `Total weights/biases: ${model.weights.length}`, 'info');
+                
+                let totalNonZero = 0;
+                let totalParams = 0;
+                
+                for (let i = 0; i < model.weights.length; i++) {
+                    const w = model.weights[i];
+                    const data = await w.data();
+                    const nonZero = Array.from(data).filter(v => Math.abs(v) > 1e-6).length;
+                    totalNonZero += nonZero;
+                    totalParams += data.length;
+                    
+                    if (i < 5 || i >= model.weights.length - 2) {
+                        log('weightsTest', `  Weight ${i}: shape=${JSON.stringify(w.shape)}, size=${data.length}, non-zero=${nonZero} (${(100*nonZero/data.length).toFixed(1)}%)`);
+                    } else if (i === 5) {
+                        log('weightsTest', '  ...');
+                    }
+                }
+                
+                log('weightsTest', `Total parameters: ${totalParams}, Non-zero: ${totalNonZero} (${(100*totalNonZero/totalParams).toFixed(1)}%)`, 'success');
+                
+                if (totalNonZero / totalParams < 0.01) {
+                    log('weightsTest', '⚠ WARNING: <1% of weights are non-zero. Model might be mostly zeros.', 'warning');
+                }
+            } catch (e) {
+                log('weightsTest', `Error: ${e.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
