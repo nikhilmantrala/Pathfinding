@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Heuristic Model Tester - Improved 5-Feature Model</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .model-selector {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.active {
+            background-color: #28a745;
+        }
+        button.danger {
+            background-color: #dc3545;
+        }
+        button.danger:hover {
+            background-color: #c82333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .output {
+            background-color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        table th, table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        table th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        table tr:hover {
+            background-color: #f9f9f9;
+        }
+        .grid-display {
+            display: inline-block;
+            border: 2px solid #333;
+            margin: 10px 0;
+        }
+        .grid-cell {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border: 1px solid #ccc;
+        }
+        .grid-cell.wall {
+            background-color: #333;
+        }
+        .grid-cell.start {
+            background-color: #28a745;
+        }
+        .grid-cell.goal {
+            background-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ML Heuristic Model Tester - Improved 5-Feature Model</h1>
+        
+        <div class="section">
+            <h2>Model Selection</h2>
+            <div class="model-selector">
+                <button id="loadImprovedBtn" class="active">Load Improved Model (5-feat)</button>
+                <button id="loadOriginalBtn">Load Original Model (4-feat)</button>
+                <button id="unloadBtn" class="danger">Unload Model</button>
+            </div>
+            <div id="loadStatus" class="status info" style="display:none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>Model Information</h2>
+            <div id="modelInfo">
+                <p><strong>Status:</strong> <span id="modelLoaded">Not loaded</span></p>
+                <table id="infoTable" style="display:none;">
+                    <tr>
+                        <td><strong>Model Path:</strong> <span id="modelPath">-</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Input Signature:</strong> <span id="inputSig">-</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Output Signature:</strong> <span id="outputSig">-</span></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Model Testing</h2>
+            <button id="testBtn" disabled>Test Model (Random Grid)</button>
+            <button id="testMultipleBtn" disabled>Test 10 Random Grids</button>
+            <div id="testStatus" class="status info" style="display:none;"></div>
+            <div id="testResults"></div>
+        </div>
+
+        <div class="section">
+            <h2>Console Output</h2>
+            <div id="output" class="output">Ready...</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+    <script>
+        // Global state
+        let model = null;
+        let currentModelPath = null;
+        let logBuffer = [];
+        const MAX_LOGS = 100;
+
+        // Enhanced logging
+        function addLog(msg, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const fullMsg = `[${timestamp}] ${msg}`;
+            logBuffer.push(fullMsg);
+            if (logBuffer.length > MAX_LOGS) logBuffer.shift();
+            updateOutput();
+            console.log(`[${type.toUpperCase()}]`, msg);
+        }
+
+        function updateOutput() {
+            const outputDiv = document.getElementById('output');
+            outputDiv.textContent = logBuffer.join('\n');
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function showStatus(msg, type = 'info', elementId = 'loadStatus') {
+            const el = document.getElementById(elementId);
+            el.textContent = msg;
+            el.className = `status ${type}`;
+            el.style.display = 'block';
+        }
+
+        // Improved model path
+        const IMPROVED_MODEL_PATH = './web_model_improved_static/model.json';
+        const ORIGINAL_MODEL_PATH = './web_model_static/model.json';
+
+        // Load model
+        async function loadModel(modelPath) {
+            addLog(`Loading model from: ${modelPath}`);
+            showStatus(`Loading model...`, 'info');
+            
+            try {
+                if (model) {
+                    model.dispose();
+                    model = null;
+                }
+
+                model = await tf.loadGraphModel(modelPath);
+                currentModelPath = modelPath;
+
+                addLog(`✓ Model loaded successfully!`, 'success');
+                showStatus(`✓ Model loaded: ${modelPath}`, 'success');
+
+                // Update UI
+                document.getElementById('modelLoaded').textContent = 'Loaded ✓';
+                document.getElementById('modelPath').textContent = modelPath;
+                document.getElementById('infoTable').style.display = 'table';
+
+                // Get input/output info
+                const inputs = model.modelTopology?.signature?.inputs || {};
+                const outputs = model.modelTopology?.signature?.outputs || {};
+                
+                document.getElementById('inputSig').textContent = Object.keys(inputs).length > 0 
+                    ? `grid: [1,20,20,1], start_goal: [1,5]` 
+                    : 'Unknown';
+                document.getElementById('outputSig').textContent = 'output: [1,1]';
+
+                // Enable test buttons
+                document.getElementById('testBtn').disabled = false;
+                document.getElementById('testMultipleBtn').disabled = false;
+
+                // Update button states
+                const isImproved = modelPath.includes('improved');
+                document.getElementById('loadImprovedBtn').classList.toggle('active', isImproved);
+                document.getElementById('loadOriginalBtn').classList.toggle('active', !isImproved);
+
+                return true;
+            } catch (error) {
+                addLog(`✗ Failed to load model: ${error.message}`, 'error');
+                showStatus(`✗ Error: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Test model with random grid
+        async function testModel() {
+            if (!model) {
+                showStatus('No model loaded!', 'error', 'testStatus');
+                return;
+            }
+
+            addLog(`Testing model with random grid...`);
+            showStatus(`Running test...`, 'info', 'testStatus');
+
+            try {
+                // Create random 20x20 grid
+                const gridSize = 20;
+                const gridData = new Float32Array(gridSize * gridSize);
+                for (let i = 0; i < gridData.length; i++) {
+                    gridData[i] = Math.random() > 0.7 ? 1 : 0; // 30% walls
+                }
+
+                const start = { row: 0, col: 0 };
+                const goal = { row: 19, col: 19 };
+
+                // Create tensors with 5 features
+                const gridTensor = tf.tensor4d(gridData, [1, gridSize, gridSize, 1], 'float32');
+                
+                // Distance calculation
+                const dx = goal.row - start.row;
+                const dy = goal.col - start.col;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const maxDist = Math.sqrt(2) * (gridSize - 1);
+                const normalizedDist = dist / maxDist;
+
+                // 5 features: start_r, start_c, goal_r, goal_c, normalized_distance
+                const startGoalData = [
+                    start.row / (gridSize - 1),
+                    start.col / (gridSize - 1),
+                    goal.row / (gridSize - 1),
+                    goal.col / (gridSize - 1),
+                    normalizedDist
+                ];
+                const sgTensor = tf.tensor2d([startGoalData], [1, 5], 'float32');
+
+                addLog(`Input shapes: grid=${gridTensor.shape}, start_goal=${sgTensor.shape}`);
+                addLog(`Start/Goal (5 features): [${startGoalData.map(v => v.toFixed(3)).join(', ')}]`);
+
+                // Run inference
+                const output = model.predict({grid: gridTensor, start_goal: sgTensor});
+                const result = await output.data();
+                const value = result[0];
+
+                addLog(`✓ Prediction successful!`, 'success');
+                addLog(`Output value: ${value.toFixed(6)}`);
+                addLog(`Is finite: ${isFinite(value) ? '✓' : '✗'}`);
+                addLog(`Is in range [0,1]: ${value >= 0 && value <= 1 ? '✓' : '✗'}`);
+
+                // Cleanup
+                gridTensor.dispose();
+                sgTensor.dispose();
+                output.dispose();
+
+                // Show results
+                let resultsHTML = `
+                    <table>
+                        <tr><th>Metric</th><th>Value</th></tr>
+                        <tr><td>Grid Size</td><td>${gridSize}×${gridSize}</td></tr>
+                        <tr><td>Wall Count</td><td>${Array.from(gridData).filter(v => v > 0).length}</td></tr>
+                        <tr><td>Start</td><td>(${start.row}, ${start.col})</td></tr>
+                        <tr><td>Goal</td><td>(${goal.row}, ${goal.col})</td></tr>
+                        <tr><td>Distance</td><td>${dist.toFixed(2)}</td></tr>
+                        <tr><td><strong>Prediction</strong></td><td><strong>${value.toFixed(6)}</strong></td></tr>
+                        <tr><td>Finite</td><td>${isFinite(value) ? '✓ Yes' : '✗ No'}</td></tr>
+                        <tr><td>Valid Range</td><td>${value >= 0 && value <= 1 ? '✓ Yes' : '✗ No'}</td></tr>
+                    </table>
+                `;
+                document.getElementById('testResults').innerHTML = resultsHTML;
+                showStatus('✓ Test completed successfully!', 'success', 'testStatus');
+
+            } catch (error) {
+                addLog(`✗ Test failed: ${error.message}`, 'error');
+                showStatus(`✗ Error: ${error.message}`, 'error', 'testStatus');
+            }
+        }
+
+        // Test multiple grids
+        async function testMultiple() {
+            if (!model) {
+                showStatus('No model loaded!', 'error', 'testStatus');
+                return;
+            }
+
+            addLog(`Testing model with 10 random grids...`);
+            showStatus(`Running 10 tests...`, 'info', 'testStatus');
+
+            const results = [];
+            try {
+                for (let test = 0; test < 10; test++) {
+                    const gridSize = 20;
+                    const gridData = new Float32Array(gridSize * gridSize);
+                    for (let i = 0; i < gridData.length; i++) {
+                        gridData[i] = Math.random() > 0.7 ? 1 : 0;
+                    }
+
+                    const start = { row: Math.floor(Math.random() * gridSize), col: Math.floor(Math.random() * gridSize) };
+                    const goal = { row: Math.floor(Math.random() * gridSize), col: Math.floor(Math.random() * gridSize) };
+
+                    const gridTensor = tf.tensor4d(gridData, [1, gridSize, gridSize, 1], 'float32');
+                    const dx = goal.row - start.row;
+                    const dy = goal.col - start.col;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const maxDist = Math.sqrt(2) * (gridSize - 1);
+                    const normalizedDist = dist / maxDist;
+
+                    const startGoalData = [
+                        start.row / (gridSize - 1),
+                        start.col / (gridSize - 1),
+                        goal.row / (gridSize - 1),
+                        goal.col / (gridSize - 1),
+                        normalizedDist
+                    ];
+                    const sgTensor = tf.tensor2d([startGoalData], [1, 5], 'float32');
+
+                    const output = model.predict({grid: gridTensor, start_goal: sgTensor});
+                    const resultData = await output.data();
+                    const value = resultData[0];
+
+                    results.push({
+                        test: test + 1,
+                        value: value.toFixed(6),
+                        valid: isFinite(value) && value >= 0 && value <= 1 ? '✓' : '✗'
+                    });
+
+                    gridTensor.dispose();
+                    sgTensor.dispose();
+                    output.dispose();
+                }
+
+                addLog(`✓ All 10 tests completed!`, 'success');
+
+                // Show results table
+                let resultsHTML = '<table><tr><th>Test</th><th>Output</th><th>Valid</th></tr>';
+                for (const r of results) {
+                    resultsHTML += `<tr><td>${r.test}</td><td>${r.value}</td><td>${r.valid}</td></tr>`;
+                }
+                resultsHTML += '</table>';
+                document.getElementById('testResults').innerHTML = resultsHTML;
+                showStatus('✓ All 10 tests passed!', 'success', 'testStatus');
+
+            } catch (error) {
+                addLog(`✗ Test batch failed: ${error.message}`, 'error');
+                showStatus(`✗ Error: ${error.message}`, 'error', 'testStatus');
+            }
+        }
+
+        // Event listeners
+        document.getElementById('loadImprovedBtn').addEventListener('click', () => {
+            loadModel(IMPROVED_MODEL_PATH);
+        });
+
+        document.getElementById('loadOriginalBtn').addEventListener('click', () => {
+            loadModel(ORIGINAL_MODEL_PATH);
+        });
+
+        document.getElementById('unloadBtn').addEventListener('click', () => {
+            if (model) {
+                model.dispose();
+                model = null;
+                currentModelPath = null;
+                document.getElementById('modelLoaded').textContent = 'Not loaded';
+                document.getElementById('infoTable').style.display = 'none';
+                document.getElementById('testBtn').disabled = true;
+                document.getElementById('testMultipleBtn').disabled = true;
+                document.getElementById('testResults').innerHTML = '';
+                showStatus('Model unloaded.', 'info');
+                addLog('Model unloaded.');
+            }
+        });
+
+        document.getElementById('testBtn').addEventListener('click', testModel);
+        document.getElementById('testMultipleBtn').addEventListener('click', testMultiple);
+
+        // Initialize
+        addLog('Page loaded. Ready to test models.');
+        addLog('Click "Load Improved Model (5-feat)" to begin.');
+    </script>
+</body>
+</html>
