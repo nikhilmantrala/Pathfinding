@@ -29,10 +29,8 @@ let batchTestManager = null;
 let lastPathfinderCall = 0;
 
 // Wait for DOM to be loaded
-console.log('[main_optimized] module loaded');
 document.addEventListener('DOMContentLoaded', () => {
     canvas = document.getElementById('gridCanvas');
-    console.log('[main_optimized] DOMContentLoaded');
     if (!canvas) {
         console.error('Canvas element not found');
         return;
@@ -61,6 +59,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (batchTestBtn) {
         batchTestBtn.addEventListener('click', async () => {
             try {
+                // Hide obstacle test results when starting bulk tests
+                const obstacleTestResults = document.getElementById('obstacleTestResults');
+                const testSummary = document.getElementById('testSummary');
+                if (obstacleTestResults) obstacleTestResults.style.display = 'none';
+                if (testSummary) testSummary.style.display = 'none';
+                
                 await batchTestManager.runTests(BatchTestConfig);
                 if (updateExportButton) updateExportButton();
             } catch (error) {
@@ -68,9 +72,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    uiManager = new UIManager(canvas, ROWS, COLS);
+    
+    // Add listener for A* vs ML Obstacle comparison button
+    const obstacleTestBtn = document.getElementById('obstacleTestBtn');
+    if (obstacleTestBtn) {
+        obstacleTestBtn.addEventListener('click', async () => {
+            try {
+                // Hide bulk test results and summary when starting obstacle test
+                const resultsDiv = document.getElementById('results');
+                const testSummary = document.getElementById('testSummary');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+                if (testSummary) testSummary.style.display = 'none';
+                
+                await batchTestManager.runObstacleComparison();
+            } catch (error) {
+                console.error('Error running obstacle comparison:', error);
+            }
+        });
+    }
 
-    // Load saved setups
+    // Load saved setups from localStorage
     setups = JSON.parse(localStorage.getItem('simpleSetups') || '{}');
 
     // Add mouse event listeners
@@ -96,9 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initializeTensorFlow() {
     try {
         await window.tf.setBackend('webgl');  // Use WebGL for better performance
-        console.log('TensorFlow.js backend set to WebGL');
     } catch (error) {
-        console.warn('Failed to set TensorFlow.js backend:', error);
+        // Silently fall back to default backend
     }
 }
 
@@ -422,8 +442,24 @@ function initializeBatchTestControls() {
                     throw new Error('Please select at least one density band');
                 }
                 
+                // Get seedsPerFamily based on preset selection
+                const seedPresetValue = uiManager.elements.batchTest.seedPreset?.value || 'RECOMMENDED';
+                let seedsPerFamily;
+                switch (seedPresetValue) {
+                    case 'QUICK':
+                        seedsPerFamily = 5;
+                        break;
+                    case 'ROBUST':
+                        seedsPerFamily = 50;
+                        break;
+                    case 'RECOMMENDED':
+                    default:
+                        seedsPerFamily = 20;
+                        break;
+                }
+                
                 const config = {
-                    seedsPerFamily: parseInt(uiManager.elements.batchTest.seedPreset?.value?.split(' ')[0]) || 20,
+                    seedsPerFamily: seedsPerFamily,
                     pairsPerSeed: parseInt(uiManager.elements.batchTest.pairsPerSeed?.value) || 3,
                     timeoutMs: parseInt(uiManager.elements.batchTest.timeoutMs?.value) || 10000,
                     saveInputs: uiManager.elements.batchTest.saveInputs?.checked ?? true,
@@ -445,6 +481,118 @@ function initializeBatchTestControls() {
     } else {
         console.error('Batch test button not found');
     }
+    
+    // Setup save/load functionality
+    setupSaveLoadHandlers();
+}
+
+// Save/Load Setup Functions
+function setupSaveLoadHandlers() {
+    const saveBtn = document.getElementById('saveBtn');
+    const loadBtn = document.getElementById('loadBtn');
+    
+    if (saveBtn) {
+        saveBtn.addEventListener('click', saveSetup);
+    }
+    
+    if (loadBtn) {
+        loadBtn.addEventListener('click', loadSetup);
+    }
+    
+    // Update dropdown on load
+    updateSetupDropdown();
+}
+
+function saveSetup() {
+    const setupName = document.getElementById('setupName');
+    const name = setupName?.value.trim();
+    
+    if (!name) {
+        alert('Please enter a setup name!');
+        return;
+    }
+    
+    // Save current grid state
+    setups[name] = {
+        grid: grid.map(row => row.map(cell => ({ 
+            isWall: cell.isWall, 
+            cost: cell.cost 
+        }))),
+        start: start ? { row: start.row, col: start.col } : null,
+        end: end ? { row: end.row, col: end.col } : null
+    };
+    
+    // Save to localStorage
+    localStorage.setItem('simpleSetups', JSON.stringify(setups));
+    
+    // Update dropdown and clear input
+    updateSetupDropdown();
+    setupName.value = '';
+    
+    alert(`Setup "${name}" saved successfully!`);
+}
+
+function loadSetup() {
+    const setupSelect = document.getElementById('setupSelect');
+    const name = setupSelect?.value;
+    
+    if (!name || !setups[name]) {
+        alert('Please select a setup to load!');
+        return;
+    }
+    
+    const setup = setups[name];
+    
+    // Restore grid from saved state
+    for (let i = 0; i < ROWS; i++) {
+        for (let j = 0; j < COLS; j++) {
+            grid[i][j].isWall = setup.grid[i][j].isWall;
+            grid[i][j].cost = setup.grid[i][j].cost !== undefined ? setup.grid[i][j].cost : 1;
+            grid[i][j].weight = grid[i][j].cost;
+            grid[i][j].color = grid[i][j].isWall ? 'black' : 'white';
+        }
+    }
+    
+    // Restore start and end points
+    start = setup.start ? grid[setup.start.row][setup.start.col] : null;
+    end = setup.end ? grid[setup.end.row][setup.end.col] : null;
+    
+    if (start) start.color = 'green';
+    if (end) end.color = 'red';
+    
+    // Update pathfinding manager
+    pathfindingManager.start = start;
+    pathfindingManager.end = end;
+    pathfindingManager.runHistory = [];
+    
+    // Redraw grid
+    drawGrid();
+    updateTable();
+    
+    alert(`Setup "${name}" loaded successfully!`);
+}
+
+function updateSetupDropdown() {
+    const setupSelect = document.getElementById('setupSelect');
+    if (!setupSelect) return;
+    
+    setupSelect.innerHTML = '';
+    
+    const setupNames = Object.keys(setups);
+    if (setupNames.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No saved setups';
+        setupSelect.appendChild(option);
+        return;
+    }
+    
+    setupNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        setupSelect.appendChild(option);
+    });
 }
 
 // All batch test functionality has been moved to BatchTestManager
@@ -481,8 +629,6 @@ async function runPathfinder() {
     const heuristic = getSelectedAlgorithm();
     const pf = new Pathfinder({ grid, rows: ROWS, cols: COLS }, heuristic);
     const algo = document.getElementById('algoSelect').value;
-
-    console.log(`runPathfinder: starting algorithm='${algo}' start=${start.row},${start.col} end=${end.row},${end.col}`);
     const startTime = performance.now();
 
     const recordResult = (success, nodesVisited, distanceTraveled) => {
@@ -503,7 +649,6 @@ async function runPathfinder() {
         };
         // Use manager API which accepts objects
         pathfindingManager.addToHistory(entry);
-        console.log('runPathfinder result:', entry);
         // Update UI via UIManager
         if (uiManager && typeof uiManager.updateResults === 'function') {
             uiManager.updateResults(pathfindingManager.getRunHistory());
@@ -636,10 +781,8 @@ function initGrid() {
 // Utility: run a quick comparison between A* and ML heuristics on the current grid/start/end
 // Usage (in browser console): window.compareAlgorithms()
 window.compareAlgorithms = async function() {
-    console.log('compareAlgorithms invoked');
     if (!start || !end) {
-        console.warn('Set start and end points before running compareAlgorithms()');
-        return;
+        return null;
     }
 
     const results = [];

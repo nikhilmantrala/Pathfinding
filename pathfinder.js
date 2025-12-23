@@ -13,9 +13,19 @@ export function diagonalDistance(a, b) {
     return Math.max(dx, dy);
 }
 
+// Octile distance - optimal heuristic for 8-directional movement with unit costs
+export function octileDistance(a, b) {
+    const dx = Math.abs(a.row - b.row);
+    const dy = Math.abs(a.col - b.col);
+    const D = 1;
+    const D2 = Math.SQRT2;
+    return D * (dx + dy) + (D2 - 2 * D) * Math.min(dx, dy);
+}
+
 // Algorithm-specific heuristic functions
+// FIXED: Use octile distance for A* since the grid allows diagonal movement
 export function AstarHeuristic(a, b) {
-    return manhattanDistance(a, b);
+    return octileDistance(a, b);
 }
 
 export function dijkastraHeuristic(a, b) {

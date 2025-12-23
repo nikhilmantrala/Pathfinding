@@ -1,7 +1,7 @@
 import { Cell } from './grid.js';
 import { AstarHeuristic, Pathfinder, dijkastraHeuristic, greedyHeuristic, mlHeuristic, mlDynamicHeuristic } from './pathfinder.js';
 
-
+// Configure TensorFlow.js to use CPU backend to avoid WebGL issues
 async function initializeTensorFlow() {
     try {
         await window.tf.setBackend('cpu');
@@ -11,7 +11,7 @@ async function initializeTensorFlow() {
     }
 }
 
-
+// Initialize TensorFlow.js when the page loads
 initializeTensorFlow();
 
 const canvas = document.getElementById('gridCanvas');
@@ -22,7 +22,6 @@ let grid = [];
 let start = null, end = null;
 let mouseDown = false, wallDrawMode = null;
 let runHistory = [];
-let updateExportButton = null;
 let setups = JSON.parse(localStorage.getItem('simpleSetups') || '{}');
 
 
@@ -286,7 +285,8 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('startBtn').onclick = runPathfinder;
     document.getElementById('saveBtn').onclick = saveSetup;
     document.getElementById('loadBtn').onclick = loadSetup;
-
+    document.getElementById('exportBtn').onclick = exportToExcel;
+    // Add ML-Dynamic and A*-Dynamic to algorithm dropdown
     const algoSelect = document.getElementById('algoSelect');
     if (!Array.from(algoSelect.options).some(opt => opt.value === 'ml_dynamic')) {
         const opt = document.createElement('option');
@@ -303,14 +303,14 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('algoSelect').onchange = function() {
         const algo = this.value;
         if (algo === 'astar_dynamic' || algo === 'ml_dynamic') {
-
+            // Show costs if grid is dynamic
             const isDynamic = grid.some(row => row.some(cell => cell.cost !== 1));
             drawGrid(isDynamic);
             if (!isDynamic) {
                 alert('Grid is not dynamic! Press "Clear Dynamic Grid" to generate a dynamic environment.');
             }
         } else if (algo === 'astar' || algo === 'ml' || algo === 'dijkstra' || algo === 'greedy') {
-
+            // Hide costs, but keep grid as-is  
             drawGrid(false);
         }
     };

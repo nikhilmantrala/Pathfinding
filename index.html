@@ -8,84 +8,181 @@
 <body>
   <div id="main">
     <canvas id="gridCanvas" width="400" height="400"></canvas>
-    <div class="controls">
-      <select id="algoSelect">
-        <option value="astar">A*</option>
-        <option value="astar_dynamic">A*-Dynamic</option>
-        <option value="dijkstra">Dijkstra</option>
-        <option value="greedy">Greedy</option>
-        <option value="ml">ML</option>
-        <option value="ml_dynamic">ML-Dynamic</option>
-      </select>
-      <button id="startBtn">Start</button>
-      <button id="clearBtn">Clear</button>
-      <button id="clearDynamicBtn">Clear Dynamic Grid</button>
-    </div>
-    <div class="controls">
-      <select id="gridTypeSelect">
-        <option value="random">Random</option>
-        <option value="maze">Maze</option>
-        <option value="clustered">Clustered Obstacles</option>
-        <option value="mixed">Mixed</option>
-      </select>
-      <button id="generateBtn">Generate Layout</button>
-    </div>
-    <div class="batch-test-panel">
-      <div class="batch-test-section">
-        <h3>Batch Test Configuration</h3>
-        <div class="config-group">
-          <label>Algorithm Pair:</label>
-          <select id="algorithmPairSelect"></select>
-        </div>
-        <div class="config-group">
-          <button id="exportResultsBtn" class="export-btn">Export Results to Excel</button>
-        </div>
-        <div class="config-group">
-          <label>Layout Families:</label>
-          <div id="layoutFamilies" class="checkbox-group"></div>
-        </div>
-        <div class="config-group">
-          <label>Density Bands:</label>
-          <div id="densityBands" class="checkbox-group"></div>
-        </div>
-        <div class="config-group">
-          <label>Seeds per Family/Density:</label>
-          <select id="seedPreset">
-            <option value="QUICK">Quick (5 seeds)</option>
-            <option value="RECOMMENDED" selected>Recommended (20 seeds)</option>
-            <option value="ROBUST">Robust (50 seeds)</option>
-          </select>
-        </div>
-        <div class="config-group">
-          <label>Start/Goal Pairs per Seed:</label>
-          <input type="number" id="pairsPerSeed" min="1" max="10" value="3">
-        </div>
-        <div class="config-group">
-          <label>Timeout per Run (ms):</label>
-          <input type="number" id="timeoutMs" min="1000" max="60000" value="10000" step="1000">
-        </div>
-        <div class="config-group">
-          <label>
-            <input type="checkbox" id="saveInputs" checked>
-            Save inputs (grids and coordinates)
-          </label>
-        </div>
-        <div class="batch-test-actions">
-          <button id="batchTestBtn">Run Tests</button>
+    
+    <div class="visualization-controls">
+      <details>
+        <summary><h3>Visualization Controls</h3></summary>
+        <div class="collapsible-content">
+      
+      <!-- Configuration Section -->
+      <div class="control-section">
+        <h4>Configuration</h4>
+        <div class="controls-grid">
+          <div class="control-group">
+            <label>Algorithm</label>
+            <select id="algoSelect">
+              <option value="astar">A*</option>
+              <option value="astar_dynamic">A*-Dynamic</option>
+              <option value="dijkstra">Dijkstra</option>
+              <option value="greedy">Greedy</option>
+              <option value="ml">ML</option>
+              <option value="ml_dynamic">ML-Dynamic</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Grid Type</label>
+            <select id="gridTypeSelect">
+              <option value="random">Random</option>
+              <option value="maze">Maze</option>
+              <option value="clustered">Clustered Obstacles</option>
+              <option value="mixed">Mixed</option>
+            </select>
+          </div>
         </div>
       </div>
+      
+      <!-- Actions Section -->
+      <div class="control-section">
+        <h4>Actions</h4>
+        <div class="controls-actions">
+          <button id="startBtn" class="control-btn primary">Start Pathfinding</button>
+          <button id="generateBtn" class="control-btn secondary">Generate Layout</button>
+        </div>
+        <div class="controls-actions secondary-actions">
+          <button id="clearBtn" class="control-btn">Clear Grid</button>
+          <button id="clearDynamicBtn" class="control-btn">Clear Dynamic</button>
+        </div>
+      </div>
+      
+      <!-- Save/Load Setup Section -->
+      <div class="control-section">
+        <h4>Save/Load Setup</h4>
+        <div class="setup-controls">
+          <div class="setup-row">
+            <input id="setupName" placeholder="Enter setup name" class="setup-input">
+            <button id="saveBtn" class="control-btn">Save</button>
+          </div>
+          <div class="setup-row">
+            <select id="setupSelect" class="setup-select"></select>
+            <button id="loadBtn" class="control-btn">Load</button>
+          </div>
+        </div>
+      </div>
+        </div>
+      </details>
+    </div>
+    
+    <div class="batch-test-panel">
+      <details>
+        <summary><h3>Batch Testing</h3></summary>
+        <div class="collapsible-content">
+      <div class="batch-test-section">
+        
+        <div class="test-type-selector">
+          <div class="test-type-option">
+            <h4>Bulk Test</h4>
+            <p>Run multiple tests with custom parameters</p>
+            <button id="batchTestBtn" class="test-btn primary">Run Bulk Test</button>
+          </div>
+          <div class="test-type-option">
+            <h4>Obstacle Analysis</h4>
+            <p>Auto-compare A* vs ML across obstacle densities</p>
+            <button id="obstacleTestBtn" class="test-btn secondary">Run Analysis</button>
+          </div>
+        </div>
+        
+        <div class="config-section">
+          <details>
+            <summary>Bulk Test Parameters</summary>
+            <div class="config-grid">
+              <div class="config-group">
+                <label>Algorithm Pair</label>
+                <select id="algorithmPairSelect"></select>
+              </div>
+              <div class="config-group">
+                <label>Test Intensity</label>
+                <select id="seedPreset">
+                  <option value="QUICK">Quick (5 seeds)</option>
+                  <option value="RECOMMENDED" selected>Standard (20 seeds)</option>
+                  <option value="ROBUST">Thorough (50 seeds)</option>
+                </select>
+              </div>
+            </div>
+            <div class="config-grid">
+              <div class="config-group">
+                <label>Layout Types</label>
+                <div id="layoutFamilies" class="checkbox-group"></div>
+              </div>
+              <div class="config-group">
+                <label>Obstacle Density</label>
+                <div id="densityBands" class="checkbox-group"></div>
+              </div>
+            </div>
+            <div class="config-grid">
+              <div class="config-group">
+                <label>Start/Goal Pairs</label>
+                <input type="number" id="pairsPerSeed" min="1" max="10" value="3">
+              </div>
+              <div class="config-group">
+                <label>Timeout (ms)</label>
+                <input type="number" id="timeoutMs" min="1000" max="60000" value="10000" step="1000">
+              </div>
+            </div>
+          </details>
+        </div>
+        
+        <div class="config-section">
+          <details>
+            <summary>Obstacle Analysis Parameters</summary>
+            <div class="config-grid">
+              <div class="config-group">
+                <label>Number of Tests</label>
+                <input type="number" id="obstacleTestCount" min="10" max="500" value="100" step="10">
+              </div>
+              <div class="config-group">
+                <label>Min Obstacles</label>
+                <input type="number" id="obstacleMin" min="5" max="50" value="15" step="5">
+              </div>
+              <div class="config-group">
+                <label>Max Obstacles</label>
+                <input type="number" id="obstacleMax" min="50" max="200" value="100" step="10">
+              </div>
+              <div class="config-group">
+                <label>Test Timeout (ms)</label>
+                <input type="number" id="obstacleTimeout" min="1000" max="60000" value="10000" step="1000">
+              </div>
+            </div>
+          </details>
+        </div>
+        
+        <div class="action-bar">
+          <button id="exportResultsBtn" class="export-btn" disabled>Export Bulk Test Results</button>
+          <button id="exportObstacleResultsBtn" class="export-btn" disabled>Export Obstacle Analysis</button>
+        </div>
+      </div>
+    </div>
+  </details>
       <div id="batchTestProgress" class="progress-section" style="display: none;">
         <div class="progress-bar">
           <div class="progress-fill"></div>
         </div>
         <div class="progress-text">0%</div>
       </div>
-    </div>
-    <div class="controls">
-      <input id="setupName" placeholder="Setup name">
-      <button id="saveBtn">Save Setup</button>
-      <select id="setupSelect"></select>
-      <button id="loadBtn">Load Setup</button>
+      <div id="testSummary" class="test-summary" style="display: none;">
+        <h3>📊 Test Summary</h3>
+        <div class="summary-winner" id="summaryWinner"></div>
+        <div class="summary-grid" id="summaryGrid"></div>
+        <div class="summary-verdict" id="summaryVerdict"></div>
+      </div>
+      <div id="obstacleTestResults" class="obstacle-results" style="display: none;">
+        <h3>🎯 A* vs ML Obstacle Analysis</h3>
+        <div id="obstacleProgress" class="obstacle-progress"></div>
+        <div id="obstacleSummary" class="obstacle-summary"></div>
+        <div id="mlWinsSection" class="ml-wins-section">
+          <h4>🏆 Cases Where ML Beat A*</h4>
+          <div id="mlWinsTable"></div>
+        </div>
+      </div>
     </div>
     <div id="results">
       <table>
@@ -105,10 +202,11 @@
       </table>
     </div>
   </div>
+  <!-- External Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-  <script type="module" src="./batch-test-config.js"></script>
-  <script type="module" src="./batch-test-runner.js"></script>
+  <!-- Application -->
   <script type="module" src="./main_optimized.js"></script>
-  <script src="./ml-performance-test.js"></script>
 </body>
 </html>

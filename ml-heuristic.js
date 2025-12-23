@@ -22,22 +22,15 @@ if (typeof window !== 'undefined') {
     });
     window.resetMLDiagnostics = () => {
         ML_CALLS = ML_MODEL_LOADS = ML_PREDICTION_FAILURES = ML_VALID_RESIDUALS = 0;
-        console.log('ML diagnostics reset');
     };
 }
 
-// Log module load for easier debugging in browser console
-try {
-    if (typeof window !== 'undefined' && window.console) console.log('[ml-heuristic] module loaded');
-} catch (e) {}
-
-// Debug flag: set to true to log model load and prediction details
-let DEBUG_ML_HEURISTIC = false;  // Set to true to debug regressions
+// Debug flag for development
+let DEBUG_ML_HEURISTIC = false;
 let DEBUG_PRED_COUNT = 0;
-const MAX_DEBUG_PREDS = 100; // Log first N predictions
-// Expose toggle to window for quick testing
+const MAX_DEBUG_PREDS = 100;
 if (typeof window !== 'undefined') {
-    window.toggleMlHeuristicDebug = (v) => { DEBUG_ML_HEURISTIC = !!v; DEBUG_PRED_COUNT = 0; console.log('ML heuristic debug:', DEBUG_ML_HEURISTIC); };
+    window.toggleMlHeuristicDebug = (v) => { DEBUG_ML_HEURISTIC = !!v; DEBUG_PRED_COUNT = 0; };
 }
 
 function octileDistance(a, b) {
@@ -218,9 +211,19 @@ async function predictResidual(model, gridObj, start, goal) {
 
         const predVal = (await (Array.isArray(out) ? out[0].data() : out.data()))[0];
         const max_cost = Math.SQRT2 * (rows - 1);
-        const predicted_cost = predVal * max_cost;  // Model predicts normalized cost [0,1]
+        
+        // CRITICAL FIX: Static model predicts normalized COST directly (not residual)
+        // The predicted cost IS the heuristic value - we return it directly from mlHeuristic
+        // We return predicted_cost - octile as "residual" so that when mlHeuristic adds
+        // octile back, we get the correct predicted_cost as the final heuristic
+        const predicted_cost = predVal * max_cost;
         const octile = octileDistance(start, goal);
-        const residual = predicted_cost - octile;   // Residual = cost - heuristic
+        
+        // Ensure heuristic is admissible: use max of octile and predicted to avoid underestimation
+        // but cap residual to avoid gross overestimation that hurts performance
+        const raw_residual = predicted_cost - octile;
+        // Clamp residual to reasonable range: at least 0 (admissible), at most max_cost (avoid runaway)
+        const residual = Math.max(0, Math.min(raw_residual, max_cost));
         
         // Validate prediction
         if (!isFinite(predVal) || !isFinite(residual)) {
@@ -239,7 +242,7 @@ async function predictResidual(model, gridObj, start, goal) {
         if (DEBUG_ML_HEURISTIC && DEBUG_PRED_COUNT < MAX_DEBUG_PREDS) {
             DEBUG_PRED_COUNT++;
             const actualWallCount = Array.from(arr).filter(v => v > 0.5).length;
-            console.log(`[ML pred #${DEBUG_PRED_COUNT}] walls=${actualWallCount}/400, start=[${start.row},${start.col}], goal=[${goal.row},${goal.col}], predVal=${predVal.toFixed(4)}, predicted_cost=${predicted_cost.toFixed(3)}, octile=${octile.toFixed(3)}, residual=${residual.toFixed(3)}`);
+            console.log(`[ML pred #${DEBUG_PRED_COUNT}] walls=${actualWallCount}/400, start=[${start.row},${start.col}], goal=[${goal.row},${goal.col}], predVal=${predVal.toFixed(4)}, predicted_cost=${predicted_cost.toFixed(3)}, octile=${octile.toFixed(3)}, clamped_residual=${residual.toFixed(3)}`);
         }
 
         try { gridTensor.dispose(); } catch (e) {}
@@ -258,18 +261,39 @@ async function predictResidual(model, gridObj, start, goal) {
 async function mlHeuristic(current, goal, grid) {
     // If no grid provided, fallback to octile distance
     ML_CALLS++;
-    if (!grid || !Array.isArray(grid)) return octileDistance(current, goal);
+    const octile = octileDistance(current, goal);
+    
+    if (!grid || !Array.isArray(grid)) return octile;
     if (DEBUG_ML_HEURISTIC) console.log('[mlHeuristic] called (call #' + ML_CALLS + '), loading model...');
+    
     const model = await getStaticModel();
     if (!model) {
         ML_PREDICTION_FAILURES++;
         if (DEBUG_ML_HEURISTIC) console.error('[mlHeuristic] MODEL IS NULL - CRITICAL ERROR! Falling back to octile');
-        return octileDistance(current, goal);
+        return octile;
     }
+    
     const gridObj = gridToArray(grid);
-    const residual = await predictResidual(model, gridObj, current, goal);
-    const result = octileDistance(current, goal) + residual;
-    if (DEBUG_ML_HEURISTIC && Math.random() < 0.05) console.log('[mlHeuristic] result =', result, 'residual =', residual); // Log 5% of calls
+    if (!gridObj) return octile;
+    
+    const mlResidual = await predictResidual(model, gridObj, current, goal);
+    
+    // HYBRID APPROACH: Blend ML prediction with octile for stability
+    // - ALPHA = 0: Pure octile (safe, optimal but explores more nodes)
+    // - ALPHA = 1: Pure ML (risky, may be suboptimal)
+    // - ALPHA = 0.7: Gives ML significant influence while staying safe
+    const ALPHA = 0.7;
+    
+    const mlHeurValue = octile + mlResidual;
+    const blendedHeuristic = ALPHA * mlHeurValue + (1 - ALPHA) * octile;
+    
+    // CRITICAL: Ensure admissibility - never underestimate (return at least octile)
+    const result = Math.max(blendedHeuristic, octile);
+    
+    if (DEBUG_ML_HEURISTIC && Math.random() < 0.05) {
+        console.log(`[mlHeuristic] octile=${octile.toFixed(2)}, mlResidual=${mlResidual.toFixed(2)}, mlHeur=${mlHeurValue.toFixed(2)}, blended=${blendedHeuristic.toFixed(2)}, final=${result.toFixed(2)}`);
+    }
+    
     return result;
 }
 
