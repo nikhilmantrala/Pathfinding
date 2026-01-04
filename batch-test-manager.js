@@ -6,6 +6,7 @@ export class BatchTestManager {
         this.uiManager = uiManager;
         this.gridGenerator = gridGenerator;
         this.running = false;
+        this.obstacleEnvironmentMode = 'static';
         this.columnHeaders = [
             'Test Case',
             'Layout Type',
@@ -17,22 +18,41 @@ export class BatchTestManager {
             'Success'
         ];
         this.testResults = [this.columnHeaders];
-        this.obstacleResults = []; // Store obstacle analysis results
-        this.obstacleSummaryStats = null; // Store summary stats for export
-        this.obstacleMlWins = []; // Store ML wins for export
+        this.obstacleResults = [];
+        this.obstacleSummaryStats = null;
+        this.obstacleMlWins = [];
         
-        // Set up export button
         const exportBtn = this.uiManager?.elements?.batchTest?.exportBtn;
         if (exportBtn) {
             exportBtn.disabled = true;
             exportBtn.addEventListener('click', () => this.exportToExcel());
         }
         
-        // Set up obstacle export button
         const exportObstacleBtn = document.getElementById('exportObstacleResultsBtn');
         if (exportObstacleBtn) {
             exportObstacleBtn.disabled = true;
             exportObstacleBtn.addEventListener('click', () => this.exportObstacleAnalysis());
+        }
+        
+        this.setupEnvironmentModeToggle();
+    }
+
+    setupEnvironmentModeToggle() {
+        const staticBtn = document.getElementById('envModeStatic');
+        const variableCostBtn = document.getElementById('envModeVariableCost');
+        
+        if (staticBtn && variableCostBtn) {
+            staticBtn.addEventListener('click', () => {
+                this.obstacleEnvironmentMode = 'static';
+                staticBtn.classList.add('active');
+                variableCostBtn.classList.remove('active');
+            });
+            
+            variableCostBtn.addEventListener('click', () => {
+                this.obstacleEnvironmentMode = 'variable_cost';
+                variableCostBtn.classList.add('active');
+                staticBtn.classList.remove('active');
+            });
         }
     }
 
@@ -53,7 +73,6 @@ export class BatchTestManager {
         };
 
         try {
-            // Show progress bar
             const progressBar = this.uiManager?.elements?.batchTest?.progress;
             const progressFill = this.uiManager?.elements?.batchTest?.progressBar;
             const progressText = this.uiManager?.elements?.batchTest?.progressText;
@@ -66,20 +85,17 @@ export class BatchTestManager {
 
             this.uiManager?.disableControls?.();
             
-            // Use existing results table and clear tbody
             const resultsDiv = document.getElementById('results');
             const tbody = document.getElementById('resultsBody');
             
             if (resultsDiv && tbody) {
                 resultsDiv.style.display = 'block';
-                tbody.innerHTML = ''; // Clear existing rows
+                tbody.innerHTML = '';
             }
             
-            // Clear and initialize results array with headers
             this.testResults = [];
             this.testResults.push(this.columnHeaders);
 
-            // Get algorithms to test
             const algorithms = config.algorithmPair?.algorithms || [];
             if (algorithms.length === 0) {
                 throw new Error('No algorithms selected for testing');
@@ -101,10 +117,8 @@ export class BatchTestManager {
                     for (let seed = 0; seed < (config.seedsPerFamily || 1); seed++) {
                         for (let pair = 0; pair < (config.pairsPerSeed || 1); pair++) {
                             testCaseId++;
-                            // Generate a layout once and store its configuration
                             const gridConfig = await this.generateAndStoreLayout(layout, density);
                             
-                            // Add a header row for this test case
                             const testCaseRow = tbody.insertRow();
                             testCaseRow.style.backgroundColor = '#f0f0f0';
                             testCaseRow.style.fontWeight = 'bold';
@@ -114,7 +128,6 @@ export class BatchTestManager {
                             
                             for (const algorithm of algorithms) {
                                 currentRun++;
-                                // Use the same layout for all algorithms in this test case
                                 const result = await this.runSingleTestWithLayout(
                                     algorithm,
                                     config.timeoutMs,
@@ -129,12 +142,10 @@ export class BatchTestManager {
                                 }
                                 stats.runs++;
 
-                                // Calculate wall percentage
                                 const totalCells = this.gridGenerator.grid.rows * this.gridGenerator.grid.cols;
                                 const wallCount = gridConfig.walls.length;
                                 const wallPercentage = ((wallCount / totalCells) * 100).toFixed(1);
                                 
-                                // Create row data and add to results
                                 const thisRowData = [
                                     testCaseId,
                                     layout,
@@ -146,10 +157,8 @@ export class BatchTestManager {
                                     result.success ? 'Yes' : 'No'
                                 ];
                                 
-                                // Store for export
                                 this.testResults.push(thisRowData);
 
-                                // Add row to table
                                 const resultRow = tbody.insertRow();
                                 thisRowData.forEach((value, index) => {
                                     const cell = resultRow.insertCell();
@@ -158,14 +167,12 @@ export class BatchTestManager {
                                     if (index === 7) cell.style.color = result.success ? 'green' : 'red';
                                 });
 
-                                // Update progress
                                 if (progressFill && progressText) {
                                     const progress = (currentRun / totalRuns) * 100;
                                     progressFill.style.width = `${progress}%`;
                                     progressText.textContent = `${Math.round(progress)}%`;
                                 }
 
-                                // Allow UI updates
                                 await new Promise(resolve => setTimeout(resolve, 0));
                             }
                         }
@@ -173,7 +180,6 @@ export class BatchTestManager {
                 }
             }
 
-            // Add summary row
             if (stats.successful > 0) {
                 const avgRow = tbody.insertRow();
                 avgRow.style.fontWeight = 'bold';
@@ -185,7 +191,6 @@ export class BatchTestManager {
                 avgRow.insertCell().textContent = `${stats.successful}/${stats.runs}`;
             }
             
-            // Generate and display the comparison summary
             this.displayComparisonSummary(algorithms);
         } catch (error) {
             console.error('Batch test error:', error);
@@ -195,7 +200,6 @@ export class BatchTestManager {
             if (this.uiManager?.elements?.batchTest?.progress) {
                 this.uiManager.elements.batchTest.progress.style.display = 'none';
             }
-            // Enable export button after tests complete
             const updateExportButton = this.uiManager?.elements?.batchTest?.exportBtn;
             if (updateExportButton) {
                 updateExportButton.disabled = false;
@@ -205,19 +209,15 @@ export class BatchTestManager {
     }
 
     generateAndStoreLayout = async (layout, density) => {
-        // Generate the layout
         this.gridGenerator.generate(layout, density);
         
-        // Store the configuration (walls and start/end points)
         const gridConfig = {
             layout: layout,
             density: density,
             walls: [],
-            // Store wall positions
             valid: []
         };
 
-        // Store wall and valid position information
         for (let y = 0; y < this.gridGenerator.grid.rows; y++) {
             for (let x = 0; x < this.gridGenerator.grid.cols; x++) {
                 if (this.gridGenerator.grid.grid[y][x].isWall) {
@@ -235,15 +235,12 @@ export class BatchTestManager {
         const startTime = performance.now();
         
         try {
-            // Clear the grid
             this.gridGenerator.clearGrid();
             
-            // Restore walls from configuration
             for (const wall of gridConfig.walls) {
                 this.gridGenerator.grid.grid[wall.y][wall.x].isWall = true;
             }
             
-            // Find valid positions
             const validPositions = [];
             for (let y = 0; y < this.gridGenerator.grid.rows; y++) {
                 for (let x = 0; x < this.gridGenerator.grid.cols; x++) {
@@ -262,7 +259,6 @@ export class BatchTestManager {
                 };
             }
 
-            // Select random start and end points
             const startIdx = Math.floor(Math.random() * validPositions.length);
             let endIdx;
             do {
@@ -270,15 +266,13 @@ export class BatchTestManager {
             } while (endIdx === startIdx);
 
             const start = validPositions[startIdx];
-            let end = validPositions[endIdx];  // Changed to let since we modify it later
+            let end = validPositions[endIdx];
 
-            // Ensure the selected points are far enough apart (at least 25% of the grid size)
             const minDistance = Math.floor(Math.sqrt(Math.pow(this.gridGenerator.grid.rows, 2) + Math.pow(this.gridGenerator.grid.cols, 2)) * 0.25);
             const actualDistance = Math.sqrt(Math.pow(start.row - end.row, 2) + Math.pow(start.col - end.col, 2));
             
             if (actualDistance < minDistance) {
-                // Try to find a better end point
-                let attempts = 100; // Prevent infinite loop
+                let attempts = 100;
                 while (attempts > 0) {
                     const newEndIdx = Math.floor(Math.random() * validPositions.length);
                     if (newEndIdx !== startIdx) {
@@ -293,7 +287,6 @@ export class BatchTestManager {
                 }
             }
 
-            // Create pathfinder with appropriate settings
             const heuristicFn = this.pathfindingManager.getSelectedAlgorithm(algorithm);
             if (!heuristicFn) {
                 throw new Error(`Invalid algorithm: ${algorithm}`);
@@ -301,7 +294,6 @@ export class BatchTestManager {
 
             const pf = new Pathfinder(this.gridGenerator.grid, heuristicFn);
             
-            // Run pathfinding with a timeout
             const result = await Promise.race([
                 pf.findPath(start, end),
                 new Promise((_, reject) => 
@@ -333,18 +325,14 @@ export class BatchTestManager {
         }
 
         try {
-            // Create CSV content with UTF-8 BOM
             let csv = '\ufeff';
             
-            // Add headers
             csv += this.columnHeaders.join(',') + '\n';
             
-            // Add test results (skip header row from testResults)
             this.testResults.slice(1).forEach(row => {
                 csv += row.join(',') + '\n';
             });
 
-            // Create and trigger download
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -809,7 +797,6 @@ export class BatchTestManager {
         return canvas;
     }
     
-    // Helper function to generate Nodes Comparison Chart
     generateNodesComparisonChart = async (results) => {
         const canvas = document.createElement('canvas');
         canvas.width = 1000;
@@ -874,7 +861,6 @@ export class BatchTestManager {
         return canvas;
     }
     
-    // Helper function to generate Path Comparison Chart
     generatePathComparisonChart = async (results) => {
         const canvas = document.createElement('canvas');
         canvas.width = 1000;
@@ -939,7 +925,6 @@ export class BatchTestManager {
         return canvas;
     }
     
-    // Helper function to add chart image to sheet
     addChartToSheet = (workbook, sheetName, canvas, startRow) => {
         try {
             const imageData = canvas.toDataURL('image/png');
@@ -997,7 +982,6 @@ export class BatchTestManager {
         }
     }
     
-    // Helper function to create downloadable PNG files for charts
     createDownloadableImages = (chartCanvases) => {
         chartCanvases.forEach((canvasInfo, index) => {
             try {
@@ -1024,7 +1008,6 @@ export class BatchTestManager {
     }
 
     calculateSummaryStats = () => {
-        // Skip header row
         const data = this.testResults.slice(1);
         
         const summary = {
@@ -1037,10 +1020,9 @@ export class BatchTestManager {
                                   data.filter(row => row[7] === 'Yes').length).toFixed(2)
         };
 
-        // Calculate success rate per algorithm
         const algorithmStats = {};
         data.forEach(row => {
-            const algo = row[3]; // Algorithm is in column 4 (index 3)
+            const algo = row[3];
             if (!algorithmStats[algo]) {
                 algorithmStats[algo] = { total: 0, success: 0 };
             }
@@ -1262,12 +1244,6 @@ export class BatchTestManager {
         return '';
     }
 
-    /**
-     * Run A* vs ML comparison with varying obstacle counts (15-100 blocks)
-     * - 50 iterations max
-     * - 2 runs per obstacle count
-     * - Captures cases where ML beats A*
-     */
     runObstacleComparison = async () => {
         if (this.running) return;
         this.running = true;
@@ -1284,25 +1260,27 @@ export class BatchTestManager {
             return;
         }
 
-        // Disable button during test
         if (obstacleBtn) obstacleBtn.disabled = true;
 
-        // Show results section
         resultsDiv.style.display = 'block';
-        progressDiv.innerHTML = '🚀 Starting A* vs ML Obstacle Comparison...\n';
+        
+        const isVariableCost = this.obstacleEnvironmentMode === 'variable_cost';
+        const algo1 = isVariableCost ? 'astar_variable_cost' : 'astar';
+        const algo2 = isVariableCost ? 'ml_variable_cost' : 'ml';
+        const envLabel = isVariableCost ? 'Variable Cost Environment' : 'Static Cost Environment';
+        
+        progressDiv.innerHTML = `🚀 Starting ${algo1} vs ${algo2} Obstacle Comparison (${envLabel})...\n`;
         mlWinsTable.innerHTML = '';
         summaryDiv.innerHTML = '';
 
-        // Read parameters from UI
         const TOTAL_TESTS = parseInt(document.getElementById('obstacleTestCount')?.value) || 100;
         const MIN_OBSTACLES = parseInt(document.getElementById('obstacleMin')?.value) || 15;
         const MAX_OBSTACLES = parseInt(document.getElementById('obstacleMax')?.value) || 100;
         const TEST_TIMEOUT = parseInt(document.getElementById('obstacleTimeout')?.value) || 10000;
 
-        const mlWins = [];  // Store cases where ML beat A*
-        const allResults = [];  // Store all comparison results
+        const mlWins = [];
+        const allResults = [];
 
-        // Generate evenly spaced obstacle counts for exactly TOTAL_TESTS
         const obstacleCounts = [];
         for (let i = 0; i < TOTAL_TESTS; i++) {
             const obstacleCount = Math.round(MIN_OBSTACLES + (MAX_OBSTACLES - MIN_OBSTACLES) * (i / (TOTAL_TESTS - 1)));
@@ -1325,68 +1303,64 @@ export class BatchTestManager {
 
                 totalTests++;
                 
-                // Generate grid with specific obstacle count
                 const gridConfig = await this.generateGridWithObstacles(obstacleCount);
                 if (!gridConfig) {
                     progressDiv.innerHTML += `  ⚠️ Failed to generate valid grid\n`;
                     continue;
                 }
 
-                // Run A* with the SAME start/end as will be used for ML
-                const astarResult = await this.runTestWithFixedPoints('astar', TEST_TIMEOUT, gridConfig);
-                
-                // Run ML with the SAME start/end
-                const mlResult = await this.runTestWithFixedPoints('ml', TEST_TIMEOUT, gridConfig);
+                const algo1Result = await this.runTestWithFixedPoints(algo1, TEST_TIMEOUT, gridConfig);
+                const algo2Result = await this.runTestWithFixedPoints(algo2, TEST_TIMEOUT, gridConfig);
 
-                // Compare results
                 const comparison = {
                     obstacleCount,
-                    gridConfig,  // Store grid configuration for visualization
-                    astar: {
-                        success: astarResult.success,
-                        nodes: astarResult.nodes,
-                        pathLength: astarResult.distance,
-                        path: astarResult.path || [],
-                        time: astarResult.time
+                    environmentMode: this.obstacleEnvironmentMode,
+                    gridConfig,
+                    algo1: {
+                        name: algo1,
+                        success: algo1Result.success,
+                        nodes: algo1Result.nodes,
+                        pathLength: algo1Result.distance,
+                        path: algo1Result.path || [],
+                        time: algo1Result.time
                     },
-                    ml: {
-                        success: mlResult.success,
-                        nodes: mlResult.nodes,
-                        pathLength: mlResult.distance,
-                        path: mlResult.path || [],
-                        time: mlResult.time
+                    algo2: {
+                        name: algo2,
+                        success: algo2Result.success,
+                        nodes: algo2Result.nodes,
+                        pathLength: algo2Result.distance,
+                        path: algo2Result.path || [],
+                        time: algo2Result.time
                     },
                     winner: 'tie'
                 };
 
-                // Determine winner based on nodes and path length
-                if (astarResult.success && mlResult.success) {
-                    const astarScore = astarResult.nodes + (astarResult.distance * 10);
-                    const mlScore = mlResult.nodes + (mlResult.distance * 10);
+                if (algo1Result.success && algo2Result.success) {
+                    const algo1Score = algo1Result.nodes + (algo1Result.distance * 10);
+                    const algo2Score = algo2Result.nodes + (algo2Result.distance * 10);
                     
-                    // ML wins if it has fewer nodes AND same/shorter path
-                    if (mlResult.nodes < astarResult.nodes && mlResult.distance <= astarResult.distance) {
-                        comparison.winner = 'ml';
+                    if (algo2Result.nodes < algo1Result.nodes && algo2Result.distance <= algo1Result.distance) {
+                        comparison.winner = 'algo2';
                         mlWinCount++;
                         mlWins.push(comparison);
-                        progressDiv.innerHTML += `  ✅ 🎉 ML WINS! (Nodes: ML=${mlResult.nodes} vs A*=${astarResult.nodes}, Path: ML=${mlResult.distance.toFixed(2)} vs A*=${astarResult.distance.toFixed(2)})\n`;
-                    } else if (astarResult.nodes < mlResult.nodes || astarResult.distance < mlResult.distance) {
-                        comparison.winner = 'astar';
+                        progressDiv.innerHTML += `  ✅ 🎉 ${algo2.toUpperCase()} WINS! (Nodes: ${algo2}=${algo2Result.nodes} vs ${algo1}=${algo1Result.nodes}, Path: ${algo2}=${algo2Result.distance.toFixed(2)} vs ${algo1}=${algo1Result.distance.toFixed(2)})\n`;
+                    } else if (algo1Result.nodes < algo2Result.nodes || algo1Result.distance < algo2Result.distance) {
+                        comparison.winner = 'algo1';
                         astarWinCount++;
-                        progressDiv.innerHTML += `  ⭐ A* wins (Nodes: A*=${astarResult.nodes} vs ML=${mlResult.nodes}, Path: A*=${astarResult.distance.toFixed(2)} vs ML=${mlResult.distance.toFixed(2)})\n`;
+                        progressDiv.innerHTML += `  ⭐ ${algo1.toUpperCase()} wins (Nodes: ${algo1}=${algo1Result.nodes} vs ${algo2}=${algo2Result.nodes}, Path: ${algo1}=${algo1Result.distance.toFixed(2)} vs ${algo2}=${algo2Result.distance.toFixed(2)})\n`;
                     } else {
                         tieCount++;
-                        progressDiv.innerHTML += `  🤝 Tie (Nodes: ${astarResult.nodes}, Path: ${astarResult.distance.toFixed(2)})\n`;
+                        progressDiv.innerHTML += `  🤝 Tie (Nodes: ${algo1Result.nodes}, Path: ${algo1Result.distance.toFixed(2)})\n`;
                     }
-                } else if (mlResult.success && !astarResult.success) {
-                    comparison.winner = 'ml';
+                } else if (algo2Result.success && !algo1Result.success) {
+                    comparison.winner = 'algo2';
                     mlWinCount++;
                     mlWins.push(comparison);
-                    progressDiv.innerHTML += `  ✅ 🎉 ML WINS! (ML found path, A* failed)\n`;
-                } else if (astarResult.success && !mlResult.success) {
-                    comparison.winner = 'astar';
+                    progressDiv.innerHTML += `  ✅ 🎉 ${algo2.toUpperCase()} WINS! (${algo2} found path, ${algo1} failed)\n`;
+                } else if (algo1Result.success && !algo2Result.success) {
+                    comparison.winner = 'algo1';
                     astarWinCount++;
-                    progressDiv.innerHTML += `  ⭐ A* wins (A* found path, ML failed)\n`;
+                    progressDiv.innerHTML += `  ⭐ ${algo1.toUpperCase()} wins (${algo1} found path, ${algo2} failed)\n`;
                 } else {
                     progressDiv.innerHTML += `  ❌ Both failed to find path\n`;
                 }
@@ -1394,21 +1368,19 @@ export class BatchTestManager {
                 allResults.push(comparison);
                 progressDiv.scrollTop = progressDiv.scrollHeight;
 
-                // Allow UI update
                 await new Promise(resolve => setTimeout(resolve, 10));
             }
 
-            // Display ML wins table with grid snapshots
             if (mlWins.length > 0) {
                 let tableHtml = `
                     <table>
                         <thead>
                             <tr>
                                 <th>Obstacles</th>
-                                <th>A* Nodes</th>
-                                <th>ML Nodes</th>
-                                <th>A* Path</th>
-                                <th>ML Path</th>
+                                <th>${algo1.toUpperCase()} Nodes</th>
+                                <th>${algo2.toUpperCase()} Nodes</th>
+                                <th>${algo1.toUpperCase()} Path</th>
+                                <th>${algo2.toUpperCase()} Path</th>
                                 <th>Nodes Saved</th>
                                 <th>Grid Setup</th>
                                 <th>Path Comparison</th>
@@ -1417,41 +1389,38 @@ export class BatchTestManager {
                         <tbody>
                 `;
                 mlWins.forEach((win, index) => {
-                    const nodesSaved = win.astar.nodes - win.ml.nodes;
-                    const nodesPct = ((nodesSaved / win.astar.nodes) * 100).toFixed(1);
+                    const nodesSaved = win.algo1.nodes - win.algo2.nodes;
+                    const nodesPct = ((nodesSaved / win.algo1.nodes) * 100).toFixed(1);
                     const canvasId = `grid-canvas-${index}`;
                     const pathCanvasId = `path-canvas-${index}`;
                     tableHtml += `
                         <tr>
                             <td>${win.obstacleCount}</td>
-                            <td>${win.astar.nodes}</td>
-                            <td><strong>${win.ml.nodes}</strong></td>
-                            <td>${win.astar.pathLength.toFixed(2)}</td>
-                            <td><strong>${win.ml.pathLength.toFixed(2)}</strong></td>
+                            <td>${win.algo1.nodes}</td>
+                            <td><strong>${win.algo2.nodes}</strong></td>
+                            <td>${win.algo1.pathLength.toFixed(2)}</td>
+                            <td><strong>${win.algo2.pathLength.toFixed(2)}</strong></td>
                             <td style="color: #11998e; font-weight: bold;">-${nodesSaved} (${nodesPct}%)</td>
                             <td><canvas id="${canvasId}" width="150" height="150" style="border: 1px solid #ddd; cursor: pointer;" title="Click to enlarge"></canvas></td>
-                            <td><canvas id="${pathCanvasId}" width="150" height="150" style="border: 1px solid #ddd; cursor: pointer;" title="Blue: A* Path, Orange: ML Path"></canvas></td>
+                            <td><canvas id="${pathCanvasId}" width="150" height="150" style="border: 1px solid #ddd; cursor: pointer;" title="Blue: ${algo1.toUpperCase()} Path, Orange: ${algo2.toUpperCase()} Path"></canvas></td>
                         </tr>
                     `;
                 });
                 tableHtml += '</tbody></table>';
                 mlWinsTable.innerHTML = tableHtml;
                 
-                // Draw grid snapshots after table is rendered
                 setTimeout(() => {
                     mlWins.forEach((win, index) => {
                         const canvas = document.getElementById(`grid-canvas-${index}`);
                         const pathCanvas = document.getElementById(`path-canvas-${index}`);
                         if (canvas) {
                             this.drawGridSnapshot(canvas, win.gridConfig);
-                            // Add click handler to show enlarged version
                             canvas.addEventListener('click', () => {
                                 this.showEnlargedGrid(win.gridConfig, win);
                             });
                         }
                         if (pathCanvas) {
-                            this.drawPathComparison(pathCanvas, win.gridConfig, win.astar.path, win.ml.path);
-                            // Add click handler to show enlarged version
+                            this.drawPathComparison(pathCanvas, win.gridConfig, win.algo1.path, win.algo2.path);
                             pathCanvas.addEventListener('click', () => {
                                 this.showEnlargedPaths(win.gridConfig, win);
                             });
@@ -1459,15 +1428,14 @@ export class BatchTestManager {
                     });
                 }, 100);
             } else {
-                mlWinsTable.innerHTML = '<p style="text-align: center; opacity: 0.8;">No cases found where ML beat A* in this test run.</p>';
+                mlWinsTable.innerHTML = `<p style="text-align: center; opacity: 0.8;">No cases found where ${algo2} beat ${algo1} in this test run.</p>`;
             }
 
-            // Display summary
-            const avgAstarNodes = allResults.filter(r => r.astar.success).reduce((sum, r) => sum + r.astar.nodes, 0) / allResults.filter(r => r.astar.success).length || 0;
-            const avgMlNodes = allResults.filter(r => r.ml.success).reduce((sum, r) => sum + r.ml.nodes, 0) / allResults.filter(r => r.ml.success).length || 0;
+            const avgAlgo1Nodes = allResults.filter(r => r.algo1.success).reduce((sum, r) => sum + r.algo1.nodes, 0) / allResults.filter(r => r.algo1.success).length || 0;
+            const avgAlgo2Nodes = allResults.filter(r => r.algo2.success).reduce((sum, r) => sum + r.algo2.nodes, 0) / allResults.filter(r => r.algo2.success).length || 0;
 
             summaryDiv.innerHTML = `
-                <h4>📊 Final Summary</h4>
+                <h4>📊 Final Summary (${envLabel})</h4>
                 <div class="summary-stats-grid">
                     <div class="summary-stat-card">
                         <div class="stat-number">${totalTests}</div>
@@ -1475,23 +1443,23 @@ export class BatchTestManager {
                     </div>
                     <div class="summary-stat-card">
                         <div class="stat-number">${astarWinCount}</div>
-                        <div class="stat-label">A* Wins</div>
+                        <div class="stat-label">${algo1.toUpperCase()} Wins</div>
                     </div>
                     <div class="summary-stat-card">
                         <div class="stat-number" style="color: #38ef7d;">${mlWinCount}</div>
-                        <div class="stat-label">ML Wins 🎉</div>
+                        <div class="stat-label">${algo2.toUpperCase()} Wins 🎉</div>
                     </div>
                     <div class="summary-stat-card">
                         <div class="stat-number">${tieCount}</div>
                         <div class="stat-label">Ties</div>
                     </div>
                     <div class="summary-stat-card">
-                        <div class="stat-number">${avgAstarNodes.toFixed(0)}</div>
-                        <div class="stat-label">Avg A* Nodes</div>
+                        <div class="stat-number">${avgAlgo1Nodes.toFixed(0)}</div>
+                        <div class="stat-label">Avg ${algo1.toUpperCase()} Nodes</div>
                     </div>
                     <div class="summary-stat-card">
-                        <div class="stat-number">${avgMlNodes.toFixed(0)}</div>
-                        <div class="stat-label">Avg ML Nodes</div>
+                        <div class="stat-number">${avgAlgo2Nodes.toFixed(0)}</div>
+                        <div class="stat-label">Avg ${algo2.toUpperCase()} Nodes</div>
                     </div>
                 </div>
                 <div style="margin-top: 24px; padding: 16px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 4px solid #667eea;">
@@ -1521,23 +1489,19 @@ export class BatchTestManager {
             progressDiv.innerHTML += `\n✅ Test complete! Ran ${totalTests} comparisons.\n`;
             progressDiv.innerHTML += `   A* wins: ${astarWinCount}, ML wins: ${mlWinCount}, Ties: ${tieCount}\n`;
 
-            // Store results for export
             this.obstacleResults = allResults;
             
-            // Store summary stats for export
             this.obstacleSummaryStats = {
                 totalTests: totalTests,
                 astarWins: astarWinCount,
                 mlWins: mlWinCount,
                 ties: tieCount,
-                avgAstarNodes: avgAstarNodes,
-                avgMlNodes: avgMlNodes
+                avgAstarNodes: avgAlgo1Nodes,
+                avgMlNodes: avgAlgo2Nodes
             };
             
-            // Store ML wins for export
             this.obstacleMlWins = mlWins;
             
-            // Enable export button
             const exportObstacleBtn = document.getElementById('exportObstacleResultsBtn');
             if (exportObstacleBtn) {
                 exportObstacleBtn.disabled = false;
@@ -1552,9 +1516,6 @@ export class BatchTestManager {
         }
     }
 
-    /**
-     * Generate a grid with a specific number of obstacle blocks
-     */
     generateGridWithObstacles = async (obstacleCount) => {
         const rows = this.gridGenerator.grid.rows;
         const cols = this.gridGenerator.grid.cols;
@@ -1631,10 +1592,6 @@ export class BatchTestManager {
         };
     }
 
-    /**
-     * Run a test with FIXED start/end points from gridConfig
-     * This ensures A* and ML are tested on the exact same path
-     */
     runTestWithFixedPoints = async (algorithm, timeoutMs, gridConfig) => {
         const startTime = performance.now();
         
@@ -1690,9 +1647,6 @@ export class BatchTestManager {
         }
     }
 
-    /**
-     * Run a single test with a pre-configured grid (overload for obstacle test)
-     */
     runSingleTestWithLayoutAndPoints = async (algorithm, timeoutMs, gridConfig) => {
         const startTime = performance.now();
         
@@ -1741,9 +1695,6 @@ export class BatchTestManager {
         }
     }
 
-    /**
-     * Draw a grid snapshot on a canvas
-     */
     drawGridSnapshot = (canvas, gridConfig) => {
         const ctx = canvas.getContext('2d');
         const rows = this.gridGenerator.grid.rows;
@@ -1804,9 +1755,6 @@ export class BatchTestManager {
         }
     }
 
-    /**
-     * Show enlarged grid in a modal
-     */
     showEnlargedGrid = (gridConfig, winData) => {
         // Create modal overlay
         const modal = document.createElement('div');
@@ -1887,9 +1835,6 @@ export class BatchTestManager {
         this.drawGridSnapshot(canvas, gridConfig);
     }
 
-    /**
-     * Draw path comparison showing both A* and ML paths
-     */
     drawPathComparison = (canvas, gridConfig, astarPath, mlPath) => {
         const ctx = canvas.getContext('2d');
         const rows = this.gridGenerator.grid.rows;
@@ -2016,9 +1961,6 @@ export class BatchTestManager {
         }
     }
 
-    /**
-     * Show enlarged path comparison in a modal
-     */
     showEnlargedPaths = (gridConfig, winData) => {
         // Create modal overlay
         const modal = document.createElement('div');

@@ -14,9 +14,9 @@ export class BatchTestConfig {
 
     static ALGORITHM_PAIRS = [
         { name: 'A* vs ML', algorithms: ['astar', 'ml'] },
-        { name: 'A*-Dynamic vs ML-Dynamic', algorithms: ['astar_dynamic', 'ml_dynamic'] },
-        { name: 'A* vs A*-Dynamic', algorithms: ['astar', 'astar_dynamic'] },
-        { name: 'ML vs ML-Dynamic', algorithms: ['ml', 'ml_dynamic'] }
+        { name: 'A* (Variable Cost) vs ML (Variable Cost)', algorithms: ['astar_variable_cost', 'ml_variable_cost'] },
+        { name: 'A* vs A* (Variable Cost)', algorithms: ['astar', 'astar_variable_cost'] },
+        { name: 'ML vs ML (Variable Cost)', algorithms: ['ml', 'ml_variable_cost'] }
     ];
 
     static SEED_PRESETS = {

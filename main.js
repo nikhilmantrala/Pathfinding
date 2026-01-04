@@ -82,11 +82,11 @@ function clearGrid(dynamic = false) { //clearing the grid to become blank
 function getSelectedAlgorithm() { //picking the algorithm based on the dropdown selection
     const algo = document.getElementById('algoSelect').value;
     if (algo === 'astar') return AstarHeuristic;
-    if (algo === 'astar_dynamic') return AstarHeuristic; // use same heuristic, but grid has costs
+    if (algo === 'astar_variable_cost') return AstarHeuristic; // use same heuristic, but grid has costs
     if (algo === 'dijkstra') return () => 0;
     if (algo === 'greedy') return (a, b) => Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
     if (algo === 'ml') return async (a, b) => await mlHeuristic(a, b, grid);
-    if (algo === 'ml_dynamic') return async (a, b) => await mlDynamicHeuristic(a, b, grid);
+    if (algo === 'ml_variable_cost') return async (a, b) => await mlDynamicHeuristic(a, b, grid);
     return AstarHeuristic; //default to A* if nothing is selected
 }
 
@@ -118,7 +118,7 @@ async function runPathfinder() {
 function drawGridAuto() {
     const algo = document.getElementById('algoSelect').value;
     const isDynamic = grid.some(row => row.some(cell => cell.cost !== 1));
-    drawGrid((algo === 'astar_dynamic' || algo === 'ml_dynamic') && isDynamic);
+    drawGrid((algo === 'astar_variable_cost' || algo === 'ml_variable_cost') && isDynamic);
 }
 
 function showPath() {
@@ -286,28 +286,28 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('saveBtn').onclick = saveSetup;
     document.getElementById('loadBtn').onclick = loadSetup;
     document.getElementById('exportBtn').onclick = exportToExcel;
-    // Add ML-Dynamic and A*-Dynamic to algorithm dropdown
+    // Add ML-Variable Cost and A*-Variable Cost to algorithm dropdown
     const algoSelect = document.getElementById('algoSelect');
-    if (!Array.from(algoSelect.options).some(opt => opt.value === 'ml_dynamic')) {
+    if (!Array.from(algoSelect.options).some(opt => opt.value === 'ml_variable_cost')) {
         const opt = document.createElement('option');
-        opt.value = 'ml_dynamic';
-        opt.textContent = 'ML-Dynamic';
+        opt.value = 'ml_variable_cost';
+        opt.textContent = 'ML (Variable Cost)';
         algoSelect.appendChild(opt);
     }
-    if (!Array.from(algoSelect.options).some(opt => opt.value === 'astar_dynamic')) {
+    if (!Array.from(algoSelect.options).some(opt => opt.value === 'astar_variable_cost')) {
         const opt = document.createElement('option');
-        opt.value = 'astar_dynamic';
-        opt.textContent = 'A*-Dynamic';
+        opt.value = 'astar_variable_cost';
+        opt.textContent = 'A* (Variable Cost)';
         algoSelect.appendChild(opt);
     }
     document.getElementById('algoSelect').onchange = function() {
         const algo = this.value;
-        if (algo === 'astar_dynamic' || algo === 'ml_dynamic') {
+        if (algo === 'astar_variable_cost' || algo === 'ml_variable_cost') {
             // Show costs if grid is dynamic
             const isDynamic = grid.some(row => row.some(cell => cell.cost !== 1));
             drawGrid(isDynamic);
             if (!isDynamic) {
-                alert('Grid is not dynamic! Press "Clear Dynamic Grid" to generate a dynamic environment.');
+                alert('Grid is not variable cost! Press "Clear Variable Cost Grid" to generate a variable cost environment.');
             }
         } else if (algo === 'astar' || algo === 'ml' || algo === 'dijkstra' || algo === 'greedy') {
             // Hide costs, but keep grid as-is  

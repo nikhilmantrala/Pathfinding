@@ -290,7 +290,7 @@ async function runTestWithAlgorithm(batchSize, algo, gridLayouts, elements, stat
                     });
                 };
 
-                if (algo === 'ml' || algo === 'ml_dynamic') {
+                if (algo === 'ml' || algo === 'ml_variable_cost') {
                     pathfinder.runAsync(start, end, null, callback);
                 } else {
                     pathfinder.run(start, end, null, callback);
@@ -602,11 +602,11 @@ function getSelectedAlgorithm(algorithm = null) {
     if (algorithm) {
         switch (algorithm) {
             case 'astar': return AstarHeuristic;
-            case 'astar_dynamic': return AstarHeuristic;
+            case 'astar_variable_cost': return AstarHeuristic;
             case 'dijkstra': return () => 0;  // Dijkstra uses 0 as heuristic
             case 'greedy': return (a, b) => Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
             case 'ml': return async (a, b) => await mlHeuristic(a, b, grid);
-            case 'ml_dynamic': return async (a, b) => await mlDynamicHeuristic(a, b, grid);
+            case 'ml_variable_cost': return async (a, b) => await mlDynamicHeuristic(a, b, grid);
             default: return AstarHeuristic;
         }
     }
@@ -658,7 +658,7 @@ async function runPathfinder() {
         if (success) showPath();
     };
 
-    if (algo === 'ml' || algo === 'ml_dynamic') {
+    if (algo === 'ml' || algo === 'ml_variable_cost') {
         await pf.runAsync(start, end, drawGridAuto, (success, nodesVisited, distanceTraveled) => {
             recordResult(success, nodesVisited, distanceTraveled);
         });

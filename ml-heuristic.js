@@ -26,7 +26,7 @@ if (typeof window !== 'undefined') {
 }
 
 // Debug flag for development
-let DEBUG_ML_HEURISTIC = false;
+let DEBUG_ML_HEURISTIC = true;
 let DEBUG_PRED_COUNT = 0;
 const MAX_DEBUG_PREDS = 100;
 if (typeof window !== 'undefined') {
@@ -78,9 +78,20 @@ async function getStaticModel() {
 }
 
 async function getDynamicModel() {
-    if (!dynamicModelPromise) dynamicModelPromise = loadModel('./web_model_dynamic/model.json');
+    if (!dynamicModelPromise) {
+        if (DEBUG_ML_HEURISTIC) console.log('[getDynamicModel] Loading model for first time...');
+        dynamicModelPromise = loadModel('./web_model_dynamic/model.json').then(m => {
+            ML_MODEL_LOADS++;
+            if (DEBUG_ML_HEURISTIC) console.log('[getDynamicModel] Model load completed:', !!m);
+            return m;
+        }).catch(e => {
+            if (DEBUG_ML_HEURISTIC) console.error('[getDynamicModel] Model load failed:', e.message);
+            dynamicModelPromise = null; // Reset so we can retry
+            throw e;
+        });
+    }
     const m = await dynamicModelPromise;
-    if (DEBUG_ML_HEURISTIC) console.log('Dynamic model loaded:', !!m);
+    if (DEBUG_ML_HEURISTIC) console.log('[getDynamicModel] Returning cached model:', !!m);
     return m;
 }
 
@@ -300,15 +311,35 @@ async function mlHeuristic(current, goal, grid) {
 async function mlDynamicHeuristic(current, goal, grid) {
     if (!grid || !Array.isArray(grid)) return octileDistance(current, goal);
     if (DEBUG_ML_HEURISTIC) console.log('[mlDynamicHeuristic] called');
+    
     const model = await getDynamicModel();
     if (!model) {
-        if (DEBUG_ML_HEURISTIC) console.log('[mlDynamicHeuristic] model is null, using octile fallback');
+        if (DEBUG_ML_HEURISTIC) console.error('[mlDynamicHeuristic] model is null, using octile fallback');
         return octileDistance(current, goal);
     }
+    
+    const octile = octileDistance(current, goal);
     const gridObj = gridToArray(grid);
-    const residual = await predictResidual(model, gridObj, current, goal);
-    const result = octileDistance(current, goal) + residual;
-    if (DEBUG_ML_HEURISTIC) console.log('[mlDynamicHeuristic] result =', result);
+    if (!gridObj) return octile;
+    
+    const mlResidual = await predictResidual(model, gridObj, current, goal);
+    
+    // HYBRID APPROACH: Blend ML prediction with octile for stability
+    // - ALPHA = 0: Pure octile (safe, optimal but explores more nodes)
+    // - ALPHA = 1: Pure ML (risky, may be suboptimal)
+    // - ALPHA = 0.7: Gives ML significant influence while staying safe
+    const ALPHA = 0.7;
+    
+    const mlHeurValue = octile + mlResidual;
+    const blendedHeuristic = ALPHA * mlHeurValue + (1 - ALPHA) * octile;
+    
+    // CRITICAL: Ensure admissibility - never underestimate (return at least octile)
+    const result = Math.max(blendedHeuristic, octile);
+    
+    if (DEBUG_ML_HEURISTIC && Math.random() < 0.05) {
+        console.log(`[mlDynamicHeuristic] octile=${octile.toFixed(2)}, mlResidual=${mlResidual.toFixed(2)}, mlHeur=${mlHeurValue.toFixed(2)}, blended=${blendedHeuristic.toFixed(2)}, final=${result.toFixed(2)}`);
+    }
+    
     return result;
 }
 

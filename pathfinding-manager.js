@@ -15,11 +15,11 @@ export class PathfindingManager {
     getSelectedAlgorithm(algoName) {
         switch (algoName) {
             case 'astar': return AstarHeuristic;
-            case 'astar_dynamic': return AstarHeuristic;
+            case 'astar_variable_cost': return AstarHeuristic;
             case 'dijkstra': return dijkastraHeuristic;
             case 'greedy': return greedyHeuristic;
             case 'ml': return async (a, b) => await mlHeuristic(a, b, this.grid);
-            case 'ml_dynamic': return async (a, b) => await mlDynamicHeuristic(a, b, this.grid);
+            case 'ml_variable_cost': return async (a, b) => await mlDynamicHeuristic(a, b, this.grid);
             default: return AstarHeuristic;
         }
     }
